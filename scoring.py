@@ -183,3 +183,58 @@ def score_scan_row(row: dict[str, Any]) -> dict[str, Any]:
         "token_name": token_name,
         "token_symbol": token_symbol,
     }
+
+
+def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
+    """Build a conservative baseline score from one live RugCheck report."""
+    normalized = _number(report.get("score_normalised"))
+    raw_score = _number(report.get("score"))
+    risk = _clamp(normalized) if normalized is not None else (
+        rugcheck_to_risk(raw_score) if raw_score is not None else 55
+    )
+    flags: list[str] = []
+
+    token = report.get("token") if isinstance(report.get("token"), dict) else {}
+    token_meta = report.get("tokenMeta") if isinstance(report.get("tokenMeta"), dict) else {}
+    mint_active = bool(token.get("mintAuthority"))
+    freeze_active = bool(token.get("freezeAuthority"))
+
+    if mint_active:
+        risk += 10
+        flags.append("mint_authority_active")
+    if freeze_active:
+        risk += 10
+        flags.append("freeze_authority_active")
+    if mint_active and freeze_active:
+        risk = max(risk, 50)
+    if token_meta.get("mutable") is True:
+        risk += 5
+        flags.append("mutable_metadata")
+
+    for item in report.get("risks") or []:
+        if isinstance(item, dict):
+            value = item.get("name") or item.get("description")
+        else:
+            value = item
+        normalized_flag = _snake_case(value)
+        if normalized_flag:
+            flags.append(normalized_flag)
+
+    rugged = report.get("rugged") is True
+    if rugged:
+        risk = 98
+        flags.append("rugcheck_flagged_rugged")
+
+    risk_score = _clamp(risk)
+    label = "GOOD" if risk_score < 35 else "WARN" if risk_score < 70 else "DANGER"
+    if rugged:
+        label = "DANGER"
+
+    return {
+        "risk_score": risk_score,
+        "label": label,
+        "rugcheck_score": round(raw_score) if raw_score is not None else None,
+        "risk_flags": sorted(set(flags)),
+        "token_name": token_meta.get("name") or token.get("name"),
+        "token_symbol": token_meta.get("symbol") or token.get("symbol"),
+    }

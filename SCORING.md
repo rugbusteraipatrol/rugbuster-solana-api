@@ -1,7 +1,7 @@
 # RugBuster Solana API Scoring
 
-Phase 1 is cache-only. The API reads the latest `solana_scans` row and never
-writes to Postgres.
+Collector data always has priority. The API only reads `solana_scans`; it never
+writes to or alters that collector-owned table.
 
 ## Priority
 
@@ -49,4 +49,27 @@ Boosts apply only when `risk_percent` is missing, because a present
 - risk 35-69 -> WARN
 - risk 70 or above -> DANGER
 
-Cache misses return `UNKNOWN` with a null risk score. They never return GOOD.
+## Live baseline for collector misses
+
+If `solana_scans` has no row, the API checks its separate one-hour
+`solana_live_cache`, then makes at most one serialized RugCheck request. Live
+results are a one-shot baseline, not equivalent to collector-enriched evidence.
+
+The live baseline starts with RugCheck `score_normalised` (or the calibrated raw
+score when normalized score is absent), then applies:
+
+- Active mint authority: +10; `mint_authority_active`.
+- Active freeze authority: +10; `freeze_authority_active`.
+- Both authorities active: minimum risk 50.
+- Mutable metadata: +5; `mutable_metadata`.
+- RugCheck `rugged: true`: force risk 98/DANGER;
+  `rugcheck_flagged_rugged`.
+
+Collector records may include creator rug history, launch sniping, funding-chain
+analysis, and wallet clustering accumulated over time. A single live RugCheck
+report cannot reproduce those richer signals, so its source is explicitly
+`live_rugcheck` or `live_cache`.
+
+RugCheck HTTP errors, 429 responses, timeouts, malformed JSON, or cache setup
+failure return `UNKNOWN` with a null risk score and source
+`live_scan_unavailable`. They never return GOOD.
