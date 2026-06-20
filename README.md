@@ -28,3 +28,12 @@ python -m pytest tests/ -v
 
 Set `DATABASE_URL` only when running the service against Postgres. Offline tests
 mock database and network access.
+
+## Client skill
+
+The companion
+[RugBuster Solana Preflight Skill](https://github.com/rugbusteraipatrol/rugbuster-solana-preflight-skill)
+consumes this API and maps scores to `ALLOW`, `WARN`, `BLOCK`, or
+`UNAVAILABLE`. Once an integration adopts its optional Shield wrapper, the
+wrapper enforces those decisions around the supplied action function. An
+integration can still bypass Shield by calling separate action logic directly.
