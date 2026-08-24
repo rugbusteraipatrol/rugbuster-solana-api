@@ -97,6 +97,32 @@ def _token_identity(record: dict[str, Any]) -> tuple[str | None, str | None]:
     return match.group(1).strip(), match.group(2).strip() if match.group(2) else None
 
 
+def _concentration_risk(record: dict[str, Any]) -> str | None:
+    value = record.get("v6_concentration_risk")
+    return value.strip().upper() if isinstance(value, str) and value.strip() else None
+
+
+def _rugcheck_reliable(record: dict[str, Any], rugcheck_score: float | None) -> bool:
+    """A RugCheck score can't reflect real risk before a token has any trading
+    history -- the API appears to return a near-zero default in that window,
+    which this scorer previously treated as a confirmed low-risk assessment.
+
+    Proxy for "no trading history yet": top5 holder concentration >= 99% (i.e.
+    still essentially just the creator's own allocation). Confirmed against a
+    9-token benchmark sample of missed DANGER tokens: every one had
+    rugcheck_score == 1 and v6_top5_holder_pct == 100.0. There is no token-age
+    timestamp in this record shape to gate on directly, so this holder-based
+    proxy is the closest available signal for "RugCheck hasn't seen real
+    activity yet."
+    """
+    if rugcheck_score is None:
+        return False
+    if rugcheck_score >= 10:
+        return True
+    top5 = _first_number(record, "v6_top5_holder_pct")
+    return not (top5 is not None and top5 >= 99)
+
+
 def _existing_flags(record: dict[str, Any]) -> list[str]:
     flags: list[str] = []
     for key in ("risk_flags", "flags", "cia_flags"):
@@ -125,12 +151,24 @@ def derive_score(record: dict[str, Any], row_label: str | None) -> tuple[int, fl
     flags = _existing_flags(record)
     precomputed = _first_number(record, "risk_percent")
     rugcheck_score = _rugcheck_score(record)
+    rugcheck_usable = _rugcheck_reliable(record, rugcheck_score)
 
     if precomputed is not None:
         risk = _clamp(precomputed)
     else:
         label = str(row_label or record.get("label") or "").upper()
-        risk = rugcheck_to_risk(rugcheck_score) if rugcheck_score is not None else LABEL_FALLBACKS.get(label, 55)
+        if rugcheck_score is not None and rugcheck_usable:
+            risk = rugcheck_to_risk(rugcheck_score)
+        elif rugcheck_score is not None:
+            # RugCheck returned a score, but this token has no real trading
+            # history yet (see _rugcheck_reliable) -- that score is not a
+            # confirmed low-risk assessment, so don't let it set a low floor.
+            # Fall back to the same neutral WARN default used for missing
+            # data, not the row's own (possibly already-wrong) stored label.
+            risk = 55
+            flags.append("rugcheck_score_unreliable_fresh_token")
+        else:
+            risk = LABEL_FALLBACKS.get(label, 55)
 
         creator_rate = _creator_rug_rate(record)
         if creator_rate is not None and creator_rate >= 80:
@@ -166,6 +204,14 @@ def derive_score(record: dict[str, Any], row_label: str | None) -> tuple[int, fl
     creator_rate = _creator_rug_rate(record)
     if creator_rate is not None and creator_rate >= 80:
         flags.append("creator_rug_rate_high")
+
+    # A CRITICAL internal concentration signal is our own computed evidence --
+    # it must never be silently outvoted by an external RugCheck score (or any
+    # other path above) landing in the GOOD range. Floor to WARN so a real
+    # CIA/V6 red flag can't slip through as "no major red flags detected".
+    if _concentration_risk(record) == "CRITICAL" and risk < 35:
+        risk = 55
+        flags.append("concentration_critical_override")
 
     return _clamp(risk), rugcheck_score, sorted(set(flag for flag in flags if flag))
 

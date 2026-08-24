@@ -29,6 +29,17 @@ _schema_ready = False
 app = Flask(__name__)
 
 
+@app.after_request
+def _allow_browser_reads(response):
+    # This is a public, read-only, GET-only score lookup -- no cookies/auth
+    # header, so an open CORS policy is safe. Needed so the website (running
+    # in a browser, unlike the Telegram bot's server-side requests) can call
+    # this service directly instead of re-implementing scoring itself.
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET"
+    return response
+
+
 def is_valid_solana_mint(address: str) -> bool:
     return bool(address and not address.startswith("0x") and BASE58_MINT_RE.fullmatch(address))
 
