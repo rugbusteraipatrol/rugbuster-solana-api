@@ -12,7 +12,7 @@ import psycopg2
 from flask import Flask, jsonify, request
 from psycopg2.extras import Json, RealDictCursor
 
-from scoring import score_live_rugcheck_report, score_scan_row
+from scoring import SCORING_VERSION, score_live_rugcheck_report, score_scan_row
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
@@ -95,6 +95,8 @@ def ensure_live_cache_schema() -> None:
                     );
                     CREATE INDEX IF NOT EXISTS idx_solana_live_cache_address
                       ON solana_live_cache (contract_address, created_at DESC);
+                    ALTER TABLE solana_live_cache
+                      ADD COLUMN IF NOT EXISTS scoring_version TEXT NOT NULL DEFAULT 'pre-2026.09.1';
                     """
                 )
         _schema_ready = True
@@ -110,10 +112,11 @@ def fetch_live_cache(address: str) -> dict[str, Any] | None:
                 FROM solana_live_cache
                 WHERE contract_address = %s
                   AND created_at >= now() - interval '1 hour'
+                  AND scoring_version = %s
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                (address,),
+                (address, SCORING_VERSION),
             )
             row = cursor.fetchone()
             return dict(row) if row else None
@@ -126,8 +129,8 @@ def insert_live_cache(address: str, result: dict[str, Any], raw_response: dict[s
                 """
                 INSERT INTO solana_live_cache (
                     contract_address, source, risk_score, label, rugcheck_score,
-                    risk_flags, raw_response, token_name, token_symbol
-                ) VALUES (%s, 'live_rugcheck', %s, %s, %s, %s, %s, %s, %s)
+                    risk_flags, raw_response, token_name, token_symbol, scoring_version
+                ) VALUES (%s, 'live_rugcheck', %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     address,
@@ -138,6 +141,7 @@ def insert_live_cache(address: str, result: dict[str, Any], raw_response: dict[s
                     Json(raw_response),
                     result.get("token_name"),
                     result.get("token_symbol"),
+                    SCORING_VERSION,
                 ),
             )
 
