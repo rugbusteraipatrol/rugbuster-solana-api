@@ -231,6 +231,65 @@ def score_scan_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Canonical Solana mints. RugCheck returns no holder or liquidity data at all
+# for some of these (USDC comes back holders=0, liquidity=0, score=1), which is
+# indistinguishable from an empty token by any measurement we can take. These
+# are known by curation, not by the live API, exactly as is_known_chain_asset
+# works on the AVAX path.
+KNOWN_SOLANA_MINTS = {
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC",
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": "USDT",
+    "So11111111111111111111111111111111111111112": "WSOL",
+    "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263": "BONK",
+    "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN": "JUP",
+    "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So": "mSOL",
+    "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": "ETH (Wormhole)",
+    "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh": "WBTC (Wormhole)",
+}
+
+# Below these, the token has essentially no economic life: the 17 on-chain
+# confirmed pump.fun rugs all sat at 2-5 holders and under $4k liquidity,
+# while a fresh-but-real token in the same sample had 924 holders and $8.8k.
+MIN_HOLDERS_FOR_CLEAN_VERDICT = 50
+MIN_LIQUIDITY_FOR_CLEAN_VERDICT = 5_000
+
+# RugCheck's floor score. It means "our static checks found nothing", which on
+# an unproven token is an absence of evidence, not evidence of safety.
+RUGCHECK_FLOOR_SCORE = 10
+
+
+def live_report_supports_clean_verdict(report: dict[str, Any]) -> tuple[bool, str]:
+    """Can a live RugCheck report alone justify calling a token GOOD?
+
+    It cannot when the score sits at RugCheck's floor and the token shows no
+    economic life. Measured against ground truth: 16 of 17 pump.fun tokens
+    independently confirmed as creator dumps scored GOOD with risk 1 through
+    this path, because the path trusted a floor score from a mint with one or
+    two holders. RugCheck was not wrong -- its static checks genuinely find
+    nothing on those mints -- it was being asked a question it cannot answer.
+
+    Returns (supported, reason). A false does NOT mean the token is dangerous;
+    it means this path has no basis to clear it.
+    """
+    score = _number(report.get("score"))
+    if score is not None and score >= RUGCHECK_FLOOR_SCORE:
+        return True, ""
+
+    holders = _number(report.get("totalHolders"))
+    liquidity = _number(report.get("totalMarketLiquidity"))
+
+    if (holders is None or holders == 0) and (liquidity is None or liquidity == 0):
+        return False, "rugcheck_returned_no_holder_or_liquidity_data"
+
+    if holders is not None and holders < MIN_HOLDERS_FOR_CLEAN_VERDICT:
+        return False, "too_few_holders_to_clear"
+
+    if liquidity is not None and liquidity < MIN_LIQUIDITY_FOR_CLEAN_VERDICT:
+        return False, "insufficient_liquidity_to_clear"
+
+    return True, ""
+
+
 def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
     """Build a conservative baseline score from one live RugCheck report."""
     normalized = _number(report.get("score_normalised"))
@@ -245,6 +304,19 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
     mint_active = bool(token.get("mintAuthority"))
     freeze_active = bool(token.get("freezeAuthority"))
 
+    # A regulated stablecoin keeps mint and freeze authority by design: Circle
+    # must be able to issue and to freeze under court order. Scoring that as a
+    # rug vector put USDC and USDT at risk 55 (WARN) on this path -- 1 +10 mint
+    # +10 freeze, floored to 50 by the both-active rule, +5 mutable metadata.
+    # The authorities are real; treating them as undisclosed risk on a
+    # curated canonical mint is what was wrong.
+    mint_key = str(report.get("mint") or report.get("address") or "").strip()
+    is_known_mint = mint_key in KNOWN_SOLANA_MINTS
+    if is_known_mint:
+        mint_active = False
+        freeze_active = False
+        flags.append("known_canonical_solana_mint")
+
     if mint_active:
         risk += 10
         flags.append("mint_authority_active")
@@ -253,7 +325,7 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
         flags.append("freeze_authority_active")
     if mint_active and freeze_active:
         risk = max(risk, 50)
-    if token_meta.get("mutable") is True:
+    if token_meta.get("mutable") is True and not is_known_mint:
         risk += 5
         flags.append("mutable_metadata")
 
@@ -273,6 +345,20 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
 
     risk_score = _clamp(risk)
     label = "GOOD" if risk_score < 35 else "WARN" if risk_score < 70 else "DANGER"
+
+    # A floor score from a mint with no economic life is not a clean bill of
+    # health. Withhold GOOD rather than inflate the score: this path has no
+    # evidence against the token either, so manufacturing DANGER would be the
+    # same error pointed the other way.
+    if label == "GOOD":
+        if not is_known_mint:
+            supported, reason = live_report_supports_clean_verdict(report)
+            if not supported:
+                label = "WARN"
+                risk_score = max(risk_score, 50)
+                flags.append(reason)
+                flags.append("live_scan_cannot_clear_token")
+
     if rugged:
         label = "DANGER"
 
