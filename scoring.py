@@ -231,6 +231,12 @@ def score_scan_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Bump when a change alters what a verdict means. The live cache is scoped to
+# this value, so a scoring change stops serving verdicts computed under the old
+# rules instead of leaking them for the rest of the cache TTL.
+SCORING_VERSION = "2026.09.1"
+
+
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
 # for some of these (USDC comes back holders=0, liquidity=0, score=1), which is
 # indistinguishable from an empty token by any measurement we can take. These
