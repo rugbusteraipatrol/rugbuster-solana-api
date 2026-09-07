@@ -1,0 +1,30 @@
+Golden set: C:\Users\ffurd\AppData\Local\Temp\claude\sol-api\qa\golden_set_solana.yaml
+Entries: 22   served=True   live=True
+
+  [01/22] canonical       USDC           served=GOOD     (postgres_cache    ) live=GOOD     (risk=1)
+  [02/22] canonical       USDT           served=GOOD     (live_cache        ) live=GOOD     (risk=1)
+  [03/22] canonical       WSOL           served=GOOD     (live_rugcheck     ) live=GOOD     (risk=1)
+  [04/22] canonical       BONK           served=GOOD     (live_rugcheck     ) live=GOOD     (risk=7)
+  [05/22] canonical       JUP            served=GOOD     (live_rugcheck     ) live=GOOD     (risk=7)
+  [06/22] confirmed_rug   rug-23dxgq     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [07/22] confirmed_rug   rug-3FpBvh     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [08/22] confirmed_rug   rug-3TByin     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [09/22] confirmed_rug   rug-3ZuZXv     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [10/22] confirmed_rug   rug-3n1Zy2     served=DANGER   (postgres_cache    ) live=DANGER   (risk=80)
+  [11/22] confirmed_rug   rug-6ML7tX     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [12/22] confirmed_rug   rug-6vpuYc     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [13/22] confirmed_rug   rug-74nxam     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [14/22] confirmed_rug   rug-7p7ZMh     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [15/22] confirmed_rug   rug-AShmQt     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [16/22] confirmed_rug   rug-AyerU4     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [17/22] confirmed_rug   rug-BiHqVn     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [18/22] confirmed_rug   rug-CHMfiU     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [19/22] confirmed_rug   rug-CXRhJr     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [20/22] confirmed_rug   rug-ETWVkg     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [21/22] confirmed_rug   rug-HEoAb6     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+  [22/22] confirmed_rug   rug-HoBvJJ     served=DANGER   (postgres_cache    ) live=WARN     (risk=50)
+
+[PASS] S1 canonical mints read GOOD on every path: 5/5
+[PASS] S2 on-chain confirmed creator dumps never read GOOD on any path: 17/17
+
+RESULT: GREEN - all gates pass
