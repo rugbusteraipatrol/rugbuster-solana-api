@@ -12,6 +12,8 @@ import psycopg2
 from flask import Flask, jsonify, request
 from psycopg2.extras import Json, RealDictCursor
 
+from build_identity import build_identity
+from freshness import assess, is_servable_as_current, now_utc, withhold_verdict
 from scoring import SCORING_VERSION, score_live_rugcheck_report, score_scan_row
 
 
@@ -232,9 +234,19 @@ def health():
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
-        return jsonify({"ok": True, "database": "connected", "chain": "solana"})
+        return jsonify({
+            "ok": True,
+            "database": "connected",
+            "chain": "solana",
+            **build_identity(SCORING_VERSION),
+        })
     except Exception:
-        return jsonify({"ok": False, "database": "unavailable", "chain": "solana"}), 503
+        return jsonify({
+            "ok": False,
+            "database": "unavailable",
+            "chain": "solana",
+            **build_identity(SCORING_VERSION),
+        }), 503
 
 
 @app.get("/score")
@@ -272,6 +284,7 @@ def score():
             return jsonify(cache_miss_response(address, "live_scan_unavailable"))
 
         result = score_live_rugcheck_report(report)
+        _live_observed = now_utc().isoformat()
         try:
             insert_live_cache(address, result, report)
         except Exception:
@@ -283,25 +296,69 @@ def score():
                 "address": address,
                 "chain": "solana",
                 "source": "live_rugcheck",
-                "scanned_at": None,
+                "scanned_at": _live_observed,
+                "observed_at": _live_observed,
+                "fetched_at": _live_observed,
+                "data_freshness": "FRESH",
+                "age_seconds": 0,
+                **build_identity(SCORING_VERSION),
             }
         )
         return jsonify(result)
 
     result = score_scan_row(row)
-    scanned_at = row.get("created_at")
+    state = assess(row.get("created_at"))
     result.update(
         {
             "ok": True,
             "address": row.get("contract_address") or address,
             "chain": "solana",
             "source": "postgres_cache",
-            "scanned_at": (
-                scanned_at.isoformat() if hasattr(scanned_at, "isoformat") else scanned_at
-            ),
+            # Kept for existing integrators; observed_at is the precise name.
+            "scanned_at": state["observed_at"],
+            "observed_at": state["observed_at"],
+            "fetched_at": now_utc().isoformat(),
+            "data_freshness": state["freshness"],
+            "age_seconds": state["age_seconds"],
+            **build_identity(SCORING_VERSION),
         }
     )
-    return jsonify(result)
+
+    if is_servable_as_current(state):
+        return jsonify(result)
+
+    # The observation is too old, undated or impossible. Try to replace it with
+    # a live reading before falling back to withholding the verdict.
+    try:
+        report = request_live_rugcheck(address)
+    except Exception:
+        report = None
+
+    if report is not None:
+        live = score_live_rugcheck_report(report)
+        try:
+            insert_live_cache(address, live, report)
+        except Exception:
+            pass
+        observed = now_utc().isoformat()
+        live.update(
+            {
+                "ok": True,
+                "address": address,
+                "chain": "solana",
+                "source": "live_rugcheck_refresh",
+                "scanned_at": observed,
+                "observed_at": observed,
+                "fetched_at": observed,
+                "data_freshness": "FRESH",
+                "age_seconds": 0,
+                "refreshed_stale_record_observed_at": state["observed_at"],
+                **build_identity(SCORING_VERSION),
+            }
+        )
+        return jsonify(live)
+
+    return jsonify(withhold_verdict(result, state))
 
 
 if __name__ == "__main__":

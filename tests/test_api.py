@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError
 
 import pytest
@@ -33,7 +33,10 @@ def collector_row(address=USDC):
             "token_symbol": "EX",
             "creator_rug_rate": 94.7,
         },
-        "created_at": datetime(2026, 6, 19, tzinfo=timezone.utc),
+        # Relative, not fixed: a hard-coded date silently ages past the
+        # freshness limit and turns every collector test into a staleness
+        # test. Tests that mean to exercise staleness set it explicitly.
+        "created_at": datetime.now(timezone.utc) - timedelta(hours=1),
     }
 
 
@@ -51,6 +54,12 @@ def live_report(**overrides):
 
 
 def test_collector_hit_has_priority_and_skips_live_scan(monkeypatch, client):
+    """A *fresh* collector row is served without an upstream call.
+
+    Priority is still the rule; it is now bounded by age. The stale case is
+    covered in tests/test_score_freshness_endpoint.py, where the same
+    precedence must instead trigger a refresh.
+    """
     monkeypatch.setattr(api, "fetch_latest_scan", lambda _address: collector_row())
 
     def should_not_run(_address):
@@ -144,7 +153,10 @@ def test_recent_live_cache_hit_skips_rugcheck(monkeypatch, client):
             "risk_flags": ["mutable_metadata"],
             "token_name": "Cached Live",
             "token_symbol": "CL",
-            "created_at": datetime(2026, 6, 19, tzinfo=timezone.utc),
+            # Relative, not fixed: a hard-coded date silently ages past the
+        # freshness limit and turns every collector test into a staleness
+        # test. Tests that mean to exercise staleness set it explicitly.
+        "created_at": datetime.now(timezone.utc) - timedelta(hours=1),
         },
     )
 
@@ -165,12 +177,21 @@ def test_evm_address_is_rejected(client):
 
 
 def test_malformed_collector_record_falls_back_safely(monkeypatch, client):
+    """A malformed row degrades to no verdict, not to a middling one.
+
+    This previously asserted WARN 55 -- the scorer's own "no data" default.
+    That was safe as far as it went, but the row here is also undated, and a
+    record whose age cannot be established is not evidence about the token
+    now. The contract is stricter than it was: UNKNOWN with the reason stated.
+    """
     row = collector_row()
     row.update({"label": None, "full_record": "not-json", "created_at": None})
     monkeypatch.setattr(api, "fetch_latest_scan", lambda _address: row)
+    monkeypatch.setattr(api, "request_live_rugcheck", lambda _address: None)
     data = client.get(f"/score?address={USDC}").get_json()
-    assert data["risk_score"] == 55
-    assert data["label"] == "WARN"
+    assert data["label"] == "UNKNOWN"
+    assert data["risk_score"] is None
+    assert data["data_freshness"] == "UNDATED"
 
 
 def test_collector_db_error_is_503(monkeypatch, client):
