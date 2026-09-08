@@ -13,6 +13,7 @@ from flask import Flask, jsonify, request
 from psycopg2.extras import Json, RealDictCursor
 
 from build_identity import build_identity
+from evidence import build_evidence
 from freshness import (
     LIVE_CACHE_MAX_AGE,
     assess,
@@ -176,15 +177,22 @@ def request_live_rugcheck(address: str) -> dict[str, Any] | None:
             return None
 
 
-def with_identity(payload: dict[str, Any]) -> dict[str, Any]:
-    """Attach build provenance to any response leaving this service.
+def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Attach build provenance, and the evidence split, to any response.
 
-    Every exit needs it, not only the successful ones: a review cannot tell
-    which code produced an error or an UNKNOWN either, and those are the
-    answers most likely to be argued about.
+    Every exit needs the identity, not only the successful ones: a review
+    cannot tell which code produced an error or an UNKNOWN either, and those
+    are the answers most likely to be argued about.
+
+    The evidence block is only built for answers that carry a verdict -- an
+    invalid-address 400 has nothing to split. `report` is the raw upstream
+    response where the caller has one; without it the market and account
+    readings come out UNKNOWN rather than being inferred from the verdict.
     """
     enriched = dict(payload)
     enriched.update(build_identity(SCORING_VERSION))
+    if "label" in enriched:
+        enriched["evidence"] = build_evidence(enriched, report)
     return enriched
 
 
@@ -233,7 +241,7 @@ def refresh_stale_record(address: str, state: dict[str, Any]) -> dict[str, Any] 
             "refreshed_stale_record_observed_at": state["observed_at"],
         }
     )
-    return with_identity(live)
+    return with_identity(live, report)
 
 
 def cache_miss_response(address: str, source: str = "cache_miss") -> dict[str, Any]:
@@ -388,6 +396,7 @@ def score():
                 **build_identity(SCORING_VERSION),
             }
         )
+        result["evidence"] = build_evidence(result, report)
         return jsonify(result)
 
     result = score_scan_row(row)
@@ -409,7 +418,9 @@ def score():
     )
 
     if is_servable_as_current(state):
-        return jsonify(result)
+        # Through with_identity like every other exit, so no path can quietly
+        # skip the evidence split by building its response inline.
+        return jsonify(with_identity(result))
 
     # The observation is too old, undated or impossible. Replace it with a
     # current reading if one can be had, and prefer an already-cached live
