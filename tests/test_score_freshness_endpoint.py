@@ -164,8 +164,12 @@ def test_a_stale_row_is_replaced_by_a_live_reading_when_one_is_available():
          mock.patch.object(app, "insert_live_cache"):
         body = _get()
     assert body["source"] == "live_rugcheck_refresh"
-    assert body["data_freshness"] == "FRESH"
+    # Retrieval-only, like every other upstream-derived answer: we know when we
+    # fetched, not when the upstream observed.
+    assert body["data_freshness"] == "RETRIEVED_NOW"
+    assert body["observed_at"] is None
     assert body["label"] != "UNKNOWN"
+    # The replaced row's own observation time survives as history.
     assert body["refreshed_stale_record_observed_at"].startswith("2025-01-01")
 
 
@@ -340,3 +344,113 @@ def test_a_served_verdict_always_names_where_its_number_came_from():
     assert body["verdict_provenance"] == "current_rules"
     assert body["source_scoring_version"] == app.SCORING_VERSION
     assert "verdict_from_stored_risk_percent" in body["risk_flags"]
+
+
+# --- one contract across all three upstream-derived paths ------------------
+
+RETRIEVAL_ONLY_PATHS = ("live_rugcheck", "live_rugcheck_refresh", "live_cache")
+
+
+def _live_report():
+    return {
+        "mint": MINT, "score": 1, "score_normalised": 1,
+        "totalHolders": 500_000, "totalMarketLiquidity": 5_000_000,
+        "rugged": False, "token": {}, "tokenMeta": {"name": "W", "symbol": "W"},
+        "risks": [],
+    }
+
+
+def _direct_live():
+    with mock.patch.object(app, "fetch_latest_scan", return_value=None), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=None), \
+         mock.patch.object(app, "insert_live_cache"), \
+         mock.patch.object(app, "request_live_rugcheck", return_value=_live_report()):
+        return _get()
+
+
+def _refreshed_live():
+    with mock.patch.object(app, "fetch_latest_scan", return_value=_row("2025-01-01T00:00:00Z")), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=None), \
+         mock.patch.object(app, "insert_live_cache"), \
+         mock.patch.object(app, "request_live_rugcheck", return_value=_live_report()):
+        return _get()
+
+
+def _cached_live():
+    cached = {
+        "contract_address": MINT, "risk_score": 12, "label": "GOOD",
+        "rugcheck_score": 900, "risk_flags": [], "token_name": "W", "token_symbol": "W",
+        "created_at": datetime.now(timezone.utc) - timedelta(minutes=10),
+    }
+    with mock.patch.object(app, "fetch_latest_scan", return_value=None), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=cached):
+        return _get()
+
+
+ALL_LIVE_PATHS = {
+    "direct": _direct_live,
+    "refreshed": _refreshed_live,
+    "cached": _cached_live,
+}
+
+
+@pytest.mark.parametrize("name", sorted(ALL_LIVE_PATHS))
+def test_no_upstream_derived_path_claims_an_observation_time(name):
+    """The upstream report carries none, so none of the three may report one.
+
+    The same fixture previously meant different things depending only on
+    whether an old collector row happened to exist, and on whether the answer
+    came from our cache.
+    """
+    body = ALL_LIVE_PATHS[name]()
+    assert body["source"] in RETRIEVAL_ONLY_PATHS, body["source"]
+    assert body["observed_at"] is None, f"{name} invented an observation time"
+    assert body["scanned_at"] is None
+
+
+@pytest.mark.parametrize("name", sorted(ALL_LIVE_PATHS))
+def test_every_upstream_derived_path_declares_retrieval_only_coverage(name):
+    body = ALL_LIVE_PATHS[name]()
+    assert body["observation_coverage"] == "RETRIEVAL_TIME_ONLY"
+    assert body["retrieved_at"], "the one time we do know must be reported"
+
+
+@pytest.mark.parametrize("name", sorted(ALL_LIVE_PATHS))
+def test_no_upstream_derived_path_reports_an_evidence_age(name):
+    """age_seconds means evidence age. We do not have it on these paths."""
+    body = ALL_LIVE_PATHS[name]()
+    assert body["age_seconds"] is None
+
+
+def test_the_cache_still_bounds_itself_by_retrieval_age():
+    """Retrieval age is a real bound and is still enforced; it is simply not
+    reported as the age of the evidence."""
+    old = {
+        "contract_address": MINT, "risk_score": 12, "label": "GOOD",
+        "rugcheck_score": 900, "risk_flags": [], "token_name": "W", "token_symbol": "W",
+        "created_at": datetime.now(timezone.utc) - timedelta(days=30),
+    }
+    with mock.patch.object(app, "fetch_latest_scan", return_value=None), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=old), \
+         mock.patch.object(app, "request_live_rugcheck", return_value=None):
+        body = _get()
+    assert body["label"] == "UNKNOWN"
+    assert body["retrieval_age_seconds"] > 20 * 86400
+
+
+# --- provenance may not be inferred across version namespaces --------------
+
+@pytest.mark.parametrize("field", ["data_contract_version", "engine_version", "schema_version"])
+def test_a_matching_version_in_another_namespace_is_not_scoring_provenance(client_env, field):
+    """Two opaque strings being equal establishes nothing about the rules."""
+    recent = datetime.now(timezone.utc) - timedelta(minutes=30)
+    row = _row(recent)
+    row["full_record"] = {**row["full_record"], field: app.SCORING_VERSION}
+    with mock.patch.object(app, "fetch_latest_scan", return_value=row):
+        body = _get()
+    assert body["label"] == "UNKNOWN", f"{field} was read as scoring provenance"
+    assert body["source_scoring_version"] is None

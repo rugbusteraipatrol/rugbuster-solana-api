@@ -235,20 +235,29 @@ def derive_score(
     return _clamp(risk), rugcheck_score, sorted(set(flag for flag in flags if flag))
 
 
-# Fields a stored record could carry naming the rules that produced its number.
-# None of them are present on today's collector rows: a sample of the live table
-# shows fifty keys and not one version among them, so every stored risk_percent
-# has unknown provenance.
-SOURCE_VERSION_FIELDS = ("scoring_version", "engine_version", "data_contract_version")
+# The only field that names the scoring rules. It is deliberately alone.
+#
+# An earlier version also accepted `engine_version` and `data_contract_version`,
+# and compared whichever it found against SCORING_VERSION by string equality.
+# Those are different namespaces: a data-contract version describes the shape of
+# a response and an engine version describes a different service. A row whose
+# data-contract version happened to read "2026.09.3" was therefore served as
+# though the current scoring rules had produced its number. Equality of two
+# opaque strings from different namespaces establishes nothing.
+#
+# If an equivalence is ever established between namespaces it belongs in a
+# documented mapping, not in a tuple that treats them as interchangeable.
+SOURCE_SCORING_VERSION_FIELD = "scoring_version"
 
 
 def stored_scoring_version(record: dict[str, Any]) -> str | None:
-    """Which rules produced the number stored in this record, if it says."""
-    for field in SOURCE_VERSION_FIELDS:
-        value = record.get(field)
-        if value:
-            return str(value)
-    return None
+    """Which scoring rules produced the number in this record, if it says.
+
+    Returns None when the record does not name them -- which is every collector
+    row today. Nothing else in the record is read as a substitute.
+    """
+    value = record.get(SOURCE_SCORING_VERSION_FIELD)
+    return str(value) if value else None
 
 
 def has_recomputable_evidence(record: dict[str, Any]) -> bool:
@@ -282,7 +291,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.3"
+SCORING_VERSION = "2026.09.4"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all

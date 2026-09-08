@@ -280,18 +280,18 @@ def refresh_stale_record(address: str, state: dict[str, Any]) -> dict[str, Any] 
         insert_live_cache(address, live, report)
     except Exception:
         pass
-    observed = now_utc().isoformat()
     live.update(
         {
             "ok": True,
             "address": address,
             "chain": "solana",
             "source": "live_rugcheck_refresh",
-            "scanned_at": observed,
-            "observed_at": observed,
-            "fetched_at": observed,
-            "data_freshness": "FRESH",
-            "age_seconds": 0,
+            # The same upstream report must not mean different things depending
+            # on whether an old collector row happened to exist. This path gets
+            # the identical retrieval-only contract as a direct live fetch.
+            **retrieval_times(),
+            # The replaced row's own observation time, kept as history rather
+            # than folded into this answer's.
             "refreshed_stale_record_observed_at": state["observed_at"],
         }
     )
@@ -333,7 +333,12 @@ def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             flags = []
     risk_value = row.get("risk_score")
+    # `created_at` is when we wrote this row, not when the upstream observed
+    # anything. The TTL is still enforced against it -- retrieval age is a real
+    # and useful bound -- but it is reported as retrieval time, and observed_at
+    # stays null, because the report it came from never carried one.
     state = assess(row.get("created_at"), max_age=LIVE_CACHE_MAX_AGE)
+    retrieved_at = state["observed_at"]
     result = with_identity({
         "ok": True,
         "address": row.get("contract_address") or address,
@@ -345,11 +350,19 @@ def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
         "token_name": row.get("token_name"),
         "token_symbol": row.get("token_symbol"),
         "source": "live_cache",
-        "scanned_at": state["observed_at"],
-        "observed_at": state["observed_at"],
+        "scanned_at": None,
+        "observed_at": None,
+        "retrieved_at": retrieved_at,
         "fetched_at": now_utc().isoformat(),
         "data_freshness": state["freshness"],
-        "age_seconds": state["age_seconds"],
+        "retrieval_age_seconds": state["age_seconds"],
+        "age_seconds": None,
+        "observation_coverage": "RETRIEVAL_TIME_ONLY",
+        "observation_coverage_note": (
+            "Cached from an upstream report that carries no observation "
+            "timestamp. retrieval_age_seconds is the age of our copy, not of "
+            "the evidence."
+        ),
     })
     if is_servable_as_current(state):
         return result
