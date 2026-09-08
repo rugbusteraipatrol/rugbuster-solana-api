@@ -61,6 +61,30 @@ INVALID = "INVALID"   # a timestamp that cannot be true, e.g. far in the future
 # the limit, and none of them may carry a verdict.
 SERVABLE_AS_CURRENT = {FRESH}
 
+# Every field that carries a verdict, across both services. Withholding has to
+# neutralise all of them, not the one the author happened to have in mind: this
+# module was written here for a response shaped `label`/`risk_score`, then
+# reused on the Avalanche service where the verdict also lives in `rug_score`,
+# `rug_status` and the speculation pair. Blanking only the first two left a
+# caller reading `rug_score` the stale number the withholding was meant to
+# withhold.
+#
+# Listing names a given service does not use is harmless -- absent keys are
+# skipped -- and is the safer direction, since a missed field silently serves a
+# verdict we said we would not stand behind.
+VERDICT_FIELDS = (
+    "label",
+    "verdict",
+    "risk_score",
+    "risk_percent",
+    "rug_score",
+    "rug_status",
+    "speculation_score",
+    "speculation_status",
+)
+
+WITHHELD_LABEL = "UNKNOWN"
+
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -157,10 +181,11 @@ def withhold_verdict(result: dict[str, Any], state: dict[str, Any]) -> dict[str,
     where an integrator would read it as what we assert today.
     """
     withheld = dict(result)
-    withheld["last_known_label"] = result.get("label")
-    withheld["last_known_risk_score"] = result.get("risk_score")
-    withheld["label"] = "UNKNOWN"
-    withheld["risk_score"] = None
+    for field in VERDICT_FIELDS:
+        if field not in result:
+            continue
+        withheld[f"last_known_{field}"] = result[field]
+        withheld[field] = WITHHELD_LABEL if field in ("label", "verdict") else None
 
     flags = list(withheld.get("risk_flags") or [])
     marker = f"evidence_{state.get('freshness', 'STALE').lower()}"
