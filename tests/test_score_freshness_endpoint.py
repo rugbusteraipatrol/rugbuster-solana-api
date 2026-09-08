@@ -65,14 +65,84 @@ def test_a_stale_danger_is_withheld_too(client_env):
 
 # --- control: fresh data must still be served ------------------------------
 
-def test_a_fresh_collector_row_is_still_served_normally(client_env):
+def _versioned_row(created_at, label="GOOD", risk=5):
+    """A row whose stored number names the rules that produced it."""
+    row = _row(created_at, label, risk)
+    row["full_record"] = {**row["full_record"], "scoring_version": app.SCORING_VERSION}
+    return row
+
+
+def test_a_fresh_row_from_the_current_rules_is_served_normally(client_env):
+    """The control: recent evidence AND a named, matching provenance.
+
+    A recent date alone no longer qualifies. The stored number was produced by
+    whichever rules wrote the row, and a fresh timestamp says nothing about
+    which those were.
+    """
     recent = datetime.now(timezone.utc) - timedelta(minutes=30)
-    with mock.patch.object(app, "fetch_latest_scan", return_value=_row(recent)):
+    with mock.patch.object(app, "fetch_latest_scan", return_value=_versioned_row(recent)):
         body = _get()
     assert body["label"] in {"GOOD", "WARN", "DANGER"}
     assert body["data_freshness"] == "FRESH"
+    assert body["verdict_provenance"] == "current_rules"
     assert body["source"] == "postgres_cache"
-    assert client_env.call_count == 0, "a fresh row must not trigger an upstream call"
+    assert client_env.call_count == 0, "a fresh, versioned row must not trigger an upstream call"
+
+
+def test_a_row_from_a_different_scoring_version_is_not_served_as_current(client_env):
+    recent = datetime.now(timezone.utc) - timedelta(minutes=30)
+    row = _row(recent)
+    row["full_record"] = {**row["full_record"], "scoring_version": "1999.01.1"}
+    with mock.patch.object(app, "fetch_latest_scan", return_value=row):
+        body = _get()
+    assert body["label"] == "UNKNOWN"
+    assert body["source_scoring_version"] == "1999.01.1"
+
+
+def test_an_unversioned_score_is_recomputed_when_the_evidence_allows_it(client_env):
+    """Preferred over refusing: the raw signals are in hand, so apply current
+    rules to them rather than inherit a number of unknown origin."""
+    recent = datetime.now(timezone.utc) - timedelta(minutes=30)
+    row = _row(recent)
+    row["full_record"] = {
+        "risk_percent": 5,
+        "rugcheck_score": 900,
+        "totalHolders": 4000,
+        "total_holders": 4000,
+        "liquidity_usd": 250_000,
+        "token_age_days": 200,
+    }
+    with mock.patch.object(app, "fetch_latest_scan", return_value=row):
+        body = _get()
+    assert body["verdict_provenance"] == "recomputed_from_raw_evidence"
+    assert body["label"] != "UNKNOWN"
+    assert "stored_score_ignored_unknown_provenance" in body["risk_flags"]
+    assert client_env.call_count == 0
+
+
+def test_an_unversioned_score_with_no_usable_evidence_is_withheld(client_env):
+    """Recent date, no provenance, nothing to recompute from: refresh, then
+    withhold. A fresh timestamp does not make an unattributable number current."""
+    recent = datetime.now(timezone.utc) - timedelta(minutes=30)
+    with mock.patch.object(app, "fetch_latest_scan", return_value=_row(recent)):
+        body = _get()
+    assert body["label"] == "UNKNOWN"
+    assert body["last_known_label"] == "GOOD"
+    assert body["data_freshness"] == "FRESH", "the evidence is current; the number's origin is not"
+    assert body["verdict_provenance"] == "inherited_unknown_version"
+    assert client_env.call_count == 1, "a refresh must be attempted before withholding"
+
+
+def test_an_inherited_label_is_treated_like_an_inherited_number(client_env):
+    """With no score and no evidence, derive_score maps the stored label -- the
+    same inheritance, in a different field."""
+    recent = datetime.now(timezone.utc) - timedelta(minutes=30)
+    row = _row(recent)
+    row["full_record"] = {}
+    with mock.patch.object(app, "fetch_latest_scan", return_value=row):
+        body = _get()
+    assert body["label"] == "UNKNOWN"
+    assert body["verdict_provenance"] == "inherited_unknown_version"
 
 
 # --- refreshing a stale row ------------------------------------------------
@@ -260,10 +330,13 @@ def test_a_future_dated_live_cache_row_is_withheld():
     assert body["label"] == "UNKNOWN"
 
 
-def test_a_stored_risk_percent_is_reported_as_inherited_not_recomputed():
-    """Reviewed correction: derive_score uses a stored risk_percent unchanged,
-    so the running scoring_version did not produce that number."""
+def test_a_served_verdict_always_names_where_its_number_came_from():
+    """Reviewed correction, taken further: a flag saying the number was
+    inherited does not make it current, so the response also carries the source
+    version and the provenance of the verdict it is serving."""
     recent = datetime.now(timezone.utc) - timedelta(minutes=5)
-    with mock.patch.object(app, "fetch_latest_scan", return_value=_row(recent, "DANGER", 85)):
+    with mock.patch.object(app, "fetch_latest_scan", return_value=_versioned_row(recent, "DANGER", 85)):
         body = _get()
+    assert body["verdict_provenance"] == "current_rules"
+    assert body["source_scoring_version"] == app.SCORING_VERSION
     assert "verdict_from_stored_risk_percent" in body["risk_flags"]

@@ -21,7 +21,13 @@ from freshness import (
     now_utc,
     withhold_verdict,
 )
-from scoring import SCORING_VERSION, score_live_rugcheck_report, score_scan_row
+from scoring import (
+    SCORING_VERSION,
+    has_recomputable_evidence,
+    score_live_rugcheck_report,
+    score_scan_row,
+    stored_scoring_version,
+)
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
@@ -177,6 +183,48 @@ def request_live_rugcheck(address: str) -> dict[str, Any] | None:
             return None
 
 
+def retrieval_times() -> dict[str, Any]:
+    """Timestamps for an upstream fetch, saying only what we actually know.
+
+    RugCheck's report carries no observation timestamp, so we know when we
+    retrieved it and not when it was observed. Stamping retrieval time into
+    `observed_at` presented the second as the first: a report describing a
+    snapshot taken minutes or hours earlier was reported as observed now, age
+    zero, FRESH.
+
+    `observed_at` therefore stays null, `fetched_at` carries the retrieval
+    time, and `observation_coverage` says which of the two we have. The verdict
+    is not withheld -- a fetch made a moment ago is legitimately the most
+    current thing available -- but the response no longer claims to know when
+    the upstream looked.
+    """
+    now = now_utc().isoformat()
+    return {
+        "scanned_at": None,
+        "observed_at": None,
+        "fetched_at": now,
+        "retrieved_at": now,
+        "age_seconds": None,
+        "data_freshness": "RETRIEVED_NOW",
+        "observation_coverage": "RETRIEVAL_TIME_ONLY",
+        "observation_coverage_note": (
+            "The upstream report carries no observation timestamp. We know when "
+            "we fetched it, not when it was gathered."
+        ),
+    }
+
+
+def _record_of(row: dict[str, Any]) -> dict[str, Any]:
+    """The stored record from a collector row, whatever shape it arrived in."""
+    record = row.get("full_record")
+    if isinstance(record, str):
+        try:
+            record = json.loads(record)
+        except json.JSONDecodeError:
+            return {}
+    return record if isinstance(record, dict) else {}
+
+
 def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
     """Attach build provenance, and the evidence split, to any response.
 
@@ -209,10 +257,16 @@ def refresh_stale_record(address: str, state: dict[str, Any]) -> dict[str, Any] 
         cached_live = None
 
     if cached_live is not None:
-        result = live_cache_result(cached_live, address)
-        result["source"] = "live_cache_refresh"
-        result["refreshed_stale_record_observed_at"] = state["observed_at"]
-        return result
+        cached_state = assess(cached_live.get("created_at"), max_age=LIVE_CACHE_MAX_AGE)
+        # A cached row that is itself stale, undated or future-dated cannot
+        # stand in for a refresh. Returning it early meant an unusable cache
+        # blocked the network call that could have recovered -- the cache's own
+        # SQL has no upper time bound, so a future-dated row reaches here.
+        if is_servable_as_current(cached_state):
+            result = live_cache_result(cached_live, address)
+            result["source"] = "live_cache_refresh"
+            result["refreshed_stale_record_observed_at"] = state["observed_at"]
+            return result
 
     try:
         report = request_live_rugcheck(address)
@@ -388,19 +442,47 @@ def score():
                 "address": address,
                 "chain": "solana",
                 "source": "live_rugcheck",
-                "scanned_at": _live_observed,
-                "observed_at": _live_observed,
-                "fetched_at": _live_observed,
-                "data_freshness": "FRESH",
-                "age_seconds": 0,
+                **retrieval_times(),
                 **build_identity(SCORING_VERSION),
             }
         )
         result["evidence"] = build_evidence(result, report)
         return jsonify(result)
 
-    result = score_scan_row(row)
+    # A stored risk_percent was produced by whichever rules wrote the row, and
+    # today's collector records carry no version at all -- fifty keys in a live
+    # sample, not one of them naming a scorer. Serving that number under the
+    # running scoring_version would claim a provenance we cannot support.
+    #
+    # Three options in order, per the agreed acceptance: recompute from the
+    # record's own raw signals if they are adequate; otherwise refresh; and only
+    # if that fails, withhold. Recomputation is preferred because the evidence is
+    # already in hand and it costs no upstream call.
+    #
+    # A stored *label* inherits exactly as a stored number does -- with no
+    # precomputed score and no usable evidence, `derive_score` maps the label
+    # the previous run wrote -- so the ladder turns on whether the verdict can be
+    # derived here, not on which field the old verdict happened to sit in.
+    record = _record_of(row)
+    source_version = stored_scoring_version(record)
+    provenance_known = source_version == SCORING_VERSION
+
+    if provenance_known:
+        result = score_scan_row(row)
+        verdict_provenance = "current_rules"
+    elif has_recomputable_evidence(record):
+        result = score_scan_row(row, trust_stored_score=False)
+        verdict_provenance = "recomputed_from_raw_evidence"
+    else:
+        result = score_scan_row(row)
+        verdict_provenance = "inherited_unknown_version"
+
+    # Evidence age and verdict provenance are separate axes and a row can fail
+    # either. Overwriting the freshness state with a provenance verdict lost the
+    # first: an undated row with an unversioned score is both, and a reader
+    # needs both reasons.
     state = assess(row.get("created_at"))
+    inherited_unknown = verdict_provenance == "inherited_unknown_version"
     result.update(
         {
             "ok": True,
@@ -413,14 +495,27 @@ def score():
             "fetched_at": now_utc().isoformat(),
             "data_freshness": state["freshness"],
             "age_seconds": state["age_seconds"],
+            "verdict_provenance": verdict_provenance,
+            "source_scoring_version": source_version,
             **build_identity(SCORING_VERSION),
         }
     )
 
-    if is_servable_as_current(state):
+    if is_servable_as_current(state) and not inherited_unknown:
         # Through with_identity like every other exit, so no path can quietly
         # skip the evidence split by building its response inline.
         return jsonify(with_identity(result))
+
+    if inherited_unknown and is_servable_as_current(state):
+        # The evidence is current; only the number's provenance is not. Say so
+        # rather than reporting a staleness that is not the problem.
+        state = {
+            **state,
+            "reason": (
+                "stored score carries no scoring version and the record has no "
+                "raw evidence to recompute from"
+            ),
+        }
 
     # The observation is too old, undated or impossible. Replace it with a
     # current reading if one can be had, and prefer an already-cached live

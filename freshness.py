@@ -59,7 +59,13 @@ INVALID = "INVALID"   # a timestamp that cannot be true, e.g. far in the future
 
 # Every state except FRESH means the age could not be established or is beyond
 # the limit, and none of them may carry a verdict.
-SERVABLE_AS_CURRENT = {FRESH}
+# A live fetch whose upstream carries no observation timestamp. We know the
+# retrieval was a moment ago, which is genuinely the most current thing
+# available, so it may carry a verdict -- but it is not FRESH, because FRESH
+# asserts a known observation age and this does not have one.
+RETRIEVED_NOW = "RETRIEVED_NOW"
+
+SERVABLE_AS_CURRENT = {FRESH, RETRIEVED_NOW}
 
 # Every field that carries a verdict, across both services. Withholding has to
 # neutralise all of them, not the one the author happened to have in mind: this

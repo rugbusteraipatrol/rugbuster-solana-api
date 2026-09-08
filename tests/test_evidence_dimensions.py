@@ -230,7 +230,9 @@ def test_the_endpoint_carries_evidence_without_moving_the_verdict():
         "contract_address": MINT,
         "chain": "solana",
         "label": "WARN",
-        "full_record": {"risk_percent": 55},
+        # Versioned, so the row is served rather than withheld for unknown
+        # provenance -- this test is about the evidence split, not the ladder.
+        "full_record": {"risk_percent": 55, "scoring_version": app.SCORING_VERSION},
         "created_at": datetime.now(timezone.utc) - timedelta(minutes=5),
     }
     with mock.patch.object(app, "fetch_latest_scan", return_value=row):

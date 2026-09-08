@@ -138,7 +138,11 @@ def _existing_flags(record: dict[str, Any]) -> list[str]:
     return flags
 
 
-def derive_score(record: dict[str, Any], row_label: str | None) -> tuple[int, float | None, list[str]]:
+def derive_score(
+    record: dict[str, Any],
+    row_label: str | None,
+    trust_stored_score: bool = True,
+) -> tuple[int, float | None, list[str]]:
     """
     Derive risk transparently.
 
@@ -149,7 +153,12 @@ def derive_score(record: dict[str, Any], row_label: str | None) -> tuple[int, fl
        WARN=55 so incomplete evidence never becomes a false GOOD.
     """
     flags = _existing_flags(record)
-    precomputed = _first_number(record, "risk_percent")
+    # A stored number produced by rules we cannot name is not evidence about
+    # the token under the rules running now. The caller decides whether to
+    # trust it; when it does not, the raw signals below are used instead.
+    precomputed = _first_number(record, "risk_percent") if trust_stored_score else None
+    if not trust_stored_score:
+        flags.append("stored_score_ignored_unknown_provenance")
     rugcheck_score = _rugcheck_score(record)
     rugcheck_usable = _rugcheck_reliable(record, rugcheck_score)
 
@@ -226,9 +235,38 @@ def derive_score(record: dict[str, Any], row_label: str | None) -> tuple[int, fl
     return _clamp(risk), rugcheck_score, sorted(set(flag for flag in flags if flag))
 
 
-def score_scan_row(row: dict[str, Any]) -> dict[str, Any]:
+# Fields a stored record could carry naming the rules that produced its number.
+# None of them are present on today's collector rows: a sample of the live table
+# shows fifty keys and not one version among them, so every stored risk_percent
+# has unknown provenance.
+SOURCE_VERSION_FIELDS = ("scoring_version", "engine_version", "data_contract_version")
+
+
+def stored_scoring_version(record: dict[str, Any]) -> str | None:
+    """Which rules produced the number stored in this record, if it says."""
+    for field in SOURCE_VERSION_FIELDS:
+        value = record.get(field)
+        if value:
+            return str(value)
+    return None
+
+
+def has_recomputable_evidence(record: dict[str, Any]) -> bool:
+    """Can a verdict be derived from this record's raw signals alone?
+
+    If so, an untrustworthy stored number does not have to mean withholding: the
+    evidence is present and the current rules can be applied to it. Only when it
+    is absent does inheritance become the sole option, and then it is refused.
+    """
+    score = _rugcheck_score(record)
+    return score is not None and _rugcheck_reliable(record, score)
+
+
+def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict[str, Any]:
     record = _load_record(row.get("full_record"))
-    risk_score, rugcheck_score, flags = derive_score(record, row.get("label"))
+    risk_score, rugcheck_score, flags = derive_score(
+        record, row.get("label"), trust_stored_score=trust_stored_score
+    )
     label = "GOOD" if risk_score < 35 else "WARN" if risk_score < 70 else "DANGER"
     token_name, token_symbol = _token_identity(record)
     return {
@@ -244,7 +282,7 @@ def score_scan_row(row: dict[str, Any]) -> dict[str, Any]:
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.2"
+SCORING_VERSION = "2026.09.3"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
