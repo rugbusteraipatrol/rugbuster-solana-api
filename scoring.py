@@ -321,6 +321,63 @@ MIN_LIQUIDITY_FOR_CLEAN_VERDICT = 5_000
 RUGCHECK_FLOOR_SCORE = 10
 
 
+# Risk items that describe how a token is *administered*, not whether its
+# deployer is leaving. Retained mint authority is how a bridge issues wrapped
+# assets and how a liquid-staking token credits rewards; retained freeze
+# authority is how a regulated stablecoin complies with a court order; "top 10
+# holders" on a token with three quarters of a million holders is pools and
+# treasuries, not one wallet holding the exit.
+#
+# These are worth disclosing and are kept in the flags. They are not, on their
+# own, evidence of a rug.
+ADMINISTRATIVE_RISK_ITEMS = {
+    # Our own flag names for the same administrative facts, which sit in the
+    # flag list alongside RugCheck's wording.
+    "mint_authority_active",
+    "freeze_authority_active",
+    "known_canonical_solana_mint",
+    # RugCheck's wording.
+    "mint_authority_still_enabled",
+    "freeze_authority_still_enabled",
+    "mutable_metadata",
+    "missing_file_metadata",
+    "single_holder_ownership",
+    "top_10_holders_high_ownership",
+    "high_holder_concentration",
+}
+
+# What counts as established. The 17 on-chain confirmed pump.fun rugs sat at
+# 2-5 holders and under $4k liquidity; these thresholds are four orders of
+# magnitude above that, so nothing resembling that population can reach them.
+# Deliberately high: the cost of setting them too low is missing a real rug,
+# which is far worse than leaving a large token on WARN.
+ESTABLISHED_HOLDERS = 50_000
+ESTABLISHED_LIQUIDITY = 1_000_000
+
+# Where an established token with nothing but administrative flags lands. Below
+# the GOOD threshold, but not zero -- the authorities are real and disclosed.
+ESTABLISHED_ADMINISTRATIVE_RISK = 20
+
+
+def is_established_token(report: dict[str, Any]) -> bool:
+    """Does this token have an economic footprint no rug population reaches?"""
+    holders = _number(report.get("totalHolders"))
+    liquidity = _number(report.get("totalMarketLiquidity"))
+    if holders is None or liquidity is None:
+        return False
+    return holders >= ESTABLISHED_HOLDERS and liquidity >= ESTABLISHED_LIQUIDITY
+
+
+def administrative_flags_only(risk_items: list[str]) -> bool:
+    """True when every risk RugCheck raised is about administration.
+
+    An empty list is not enough on its own -- the caller pairs this with the
+    established test, because "no risks found" on an unproven mint is the
+    absence-of-evidence case `live_report_supports_clean_verdict` handles.
+    """
+    return all(item in ADMINISTRATIVE_RISK_ITEMS for item in risk_items)
+
+
 def live_report_supports_clean_verdict(report: dict[str, Any]) -> tuple[bool, str]:
     """Can a live RugCheck report alone justify calling a token GOOD?
 
@@ -402,6 +459,28 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
             flags.append(normalized_flag)
 
     rugged = report.get("rugged") is True
+
+    # RugCheck's normalised score is inherited wholesale above, and on a token
+    # with a real economic footprint that score is dominated by administrative
+    # properties. Measured on 55 independently-sourced, demonstrably-traded
+    # Solana tokens, this path called 42% of them DANGER -- JitoSOL at 86,
+    # Jupiter's own JLP at 100, canonical WETH at 74 -- while passing the
+    # memecoins, because a pump.fun launch revokes exactly the authorities
+    # these tokens legitimately keep. The flags were right; reading them as a
+    # rug verdict was not.
+    #
+    # So when a token is far outside any rug population and every risk raised
+    # against it is administrative, the administrative score is not carried
+    # into the verdict. Every flag stays visible, and the reason is recorded.
+    if (
+        not rugged
+        and is_established_token(report)
+        and administrative_flags_only(flags)
+        and risk > ESTABLISHED_ADMINISTRATIVE_RISK
+    ):
+        risk = ESTABLISHED_ADMINISTRATIVE_RISK
+        flags.append("established_token_administrative_flags_only")
+
     if rugged:
         risk = 98
         flags.append("rugcheck_flagged_rugged")
