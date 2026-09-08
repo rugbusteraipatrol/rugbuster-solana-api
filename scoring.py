@@ -234,7 +234,7 @@ def score_scan_row(row: dict[str, Any]) -> dict[str, Any]:
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.1"
+SCORING_VERSION = "2026.09.2"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -262,6 +262,74 @@ MIN_LIQUIDITY_FOR_CLEAN_VERDICT = 5_000
 # RugCheck's floor score. It means "our static checks found nothing", which on
 # an unproven token is an absence of evidence, not evidence of safety.
 RUGCHECK_FLOOR_SCORE = 10
+
+
+# Risk items that describe how a token is *administered*, not whether its
+# deployer is leaving. Retained mint authority is how a bridge issues wrapped
+# assets and how a liquid-staking token credits rewards; retained freeze
+# authority is how a regulated stablecoin complies with a court order; "top 10
+# holders" on a token with three quarters of a million holders is pools and
+# treasuries, not one wallet holding the exit.
+#
+# These are worth disclosing and are kept in the flags. They are not, on their
+# own, evidence of a rug.
+ADMINISTRATIVE_RISK_ITEMS = {
+    # Our own flag names for the same administrative facts, which sit in the
+    # flag list alongside RugCheck's wording.
+    "mint_authority_active",
+    "freeze_authority_active",
+    "known_canonical_solana_mint",
+    # RugCheck's wording.
+    "mint_authority_still_enabled",
+    "freeze_authority_still_enabled",
+    "mutable_metadata",
+    "missing_file_metadata",
+}
+
+# Concentration is deliberately NOT in that set. The first version of this
+# change included it, on the reasoning that across three quarters of a million
+# holders the top ten must be pools and bridges. That was an assumption and was
+# never checked: nothing here establishes who any holder is. An independent
+# review reproduced the consequence -- an unverified mint with both authorities
+# live and concentrated ownership came out GOOD 20.
+#
+# Identity may explain an authority. It cannot explain away ownership nobody
+# has identified.
+
+# Holder-count and liquidity thresholds used to gate this. They are gone.
+# Size is not issuer verification: a token can be large, widely held and still
+# be controlled by someone nobody has identified, and treating scale as
+# identity is what let the counterexample through. Suppression is now gated on
+# membership of KNOWN_SOLANA_MINTS -- a curated list, verified by hand, with a
+# named asset behind each entry.
+
+# Where a curated mint with nothing but administrative flags lands. Below the
+# GOOD threshold, but deliberately not zero: the authorities are real, they are
+# still listed in the response, and a curated identity explains them rather
+# than removing them.
+CURATED_ADMINISTRATIVE_RISK = 20
+
+
+def is_curated_canonical_mint(report: dict[str, Any]) -> bool:
+    """Is this mint one we have identified by hand?
+
+    Deliberately blind to holder count and liquidity. Whether an authority is
+    expected depends on who holds it -- a bridge must mint, a regulated
+    stablecoin must be able to freeze -- and that is a question about identity,
+    which size cannot answer.
+    """
+    mint = str(report.get("mint") or report.get("address") or "").strip()
+    return mint in KNOWN_SOLANA_MINTS
+
+
+def administrative_flags_only(risk_items: list[str]) -> bool:
+    """True when every risk RugCheck raised is about administration.
+
+    An empty list is not enough on its own -- the caller pairs this with the
+    established test, because "no risks found" on an unproven mint is the
+    absence-of-evidence case `live_report_supports_clean_verdict` handles.
+    """
+    return all(item in ADMINISTRATIVE_RISK_ITEMS for item in risk_items)
 
 
 def live_report_supports_clean_verdict(report: dict[str, Any]) -> tuple[bool, str]:
@@ -345,6 +413,33 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
             flags.append(normalized_flag)
 
     rugged = report.get("rugged") is True
+
+    # RugCheck's normalised score is inherited wholesale above, and on a token
+    # with a real economic footprint that score is dominated by administrative
+    # properties. Measured on 55 independently-sourced, demonstrably-traded
+    # Solana tokens, this path called 42% of them DANGER -- JitoSOL at 86,
+    # Jupiter's own JLP at 100, canonical WETH at 74 -- while passing the
+    # memecoins, because a pump.fun launch revokes exactly the authorities
+    # these tokens legitimately keep. The flags were right; reading them as a
+    # rug verdict was not.
+    #
+    # So when the mint is one we have identified by hand, and every risk raised
+    # against it is administrative, that score is not carried into the verdict.
+    #
+    # Every flag stays in the response. Suppression means "these powers are
+    # expected for this issuer", never "these powers are absent" -- a reader
+    # still sees the mint authority on a wrapped asset, and a consumer that
+    # cares about authorities can act on it. It is a rug verdict this declines
+    # to draw from them, not the facts it hides.
+    if (
+        not rugged
+        and is_curated_canonical_mint(report)
+        and administrative_flags_only(flags)
+        and risk > CURATED_ADMINISTRATIVE_RISK
+    ):
+        risk = CURATED_ADMINISTRATIVE_RISK
+        flags.append("curated_mint_administrative_flags_only")
+
     if rugged:
         risk = 98
         flags.append("rugcheck_flagged_rugged")

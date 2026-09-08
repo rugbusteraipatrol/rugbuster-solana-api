@@ -1,0 +1,787 @@
+[
+ {
+  "symbol": "IOTA",
+  "mint": "3pKgFFJ5Yyhs9X9asYsPVBwtBx1bgwZBvS4YNLkWdkhM",
+  "liq": 562748897.21,
+  "before": "WARN",
+  "before_score": 62,
+  "after": "WARN",
+  "after_score": 62,
+  "flags": [
+   "high_market_cap_per_holder",
+   "large_amount_of_lp_unlocked",
+   "low_amount_of_lp_providers",
+   "low_liquidity"
+  ]
+ },
+ {
+  "symbol": "PUMP",
+  "mint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+  "liq": 22416162.87,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "TRUMP",
+  "mint": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+  "liq": 21254920.98,
+  "before": "WARN",
+  "before_score": 58,
+  "after": "WARN",
+  "after_score": 58,
+  "flags": [
+   "high_ownership",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "PYUSD",
+  "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+  "liq": 18991951.85,
+  "before": "WARN",
+  "before_score": 55,
+  "after": "WARN",
+  "after_score": 55,
+  "flags": [
+   "freeze_authority_active",
+   "mint_authority_active",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "MELANIA",
+  "mint": "FUAfBo2jgks6gB4Z4LfZkqSZgzNucisEHqnNebaRxM1P",
+  "liq": 13620213.82,
+  "before": "WARN",
+  "before_score": 64,
+  "after": "WARN",
+  "after_score": 64,
+  "flags": [
+   "high_ownership",
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "MEW",
+  "mint": "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5",
+  "liq": 8965996.13,
+  "before": "WARN",
+  "before_score": 40,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "high_holder_concentration",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "Fartcoin ",
+  "mint": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+  "liq": 7984938.63,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "JitoSOL",
+  "mint": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+  "liq": 7101483.13,
+  "before": "DANGER",
+  "before_score": 86,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "WETH",
+  "mint": "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+  "liq": 7049851.15,
+  "before": "DANGER",
+  "before_score": 74,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "known_canonical_solana_mint",
+   "mint_authority_still_enabled",
+   "missing_file_metadata",
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "RAY",
+  "mint": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+  "liq": 4913520.78,
+  "before": "WARN",
+  "before_score": 61,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "missing_file_metadata",
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "POPCAT",
+  "mint": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+  "liq": 3716097.5,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "PENGU",
+  "mint": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+  "liq": 3636114.95,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "SOLO",
+  "mint": "SoLo9oxzLDpcq1dpqAgMwgce5WqkRDtNXK7EPnbmeta",
+  "liq": 2914114.98,
+  "before": "DANGER",
+  "before_score": 89,
+  "after": "DANGER",
+  "after_score": 89,
+  "flags": [
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "MOODENG",
+  "mint": "ED5nyyWEzpPPiWimP8vYm7sD7TD3LAt3Q3gRTWHzPJBY",
+  "liq": 2718618.03,
+  "before": "GOOD",
+  "before_score": 22,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "high_holder_concentration"
+  ]
+ },
+ {
+  "symbol": "BP",
+  "mint": "BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy",
+  "liq": 2148679.38,
+  "before": "DANGER",
+  "before_score": 100,
+  "after": "DANGER",
+  "after_score": 100,
+  "flags": [
+   "freeze_authority_active",
+   "freeze_authority_still_enabled",
+   "high_market_cap_per_holder",
+   "high_ownership",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "USELESS",
+  "mint": "Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk",
+  "liq": 1917324.52,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "mSOL",
+  "mint": "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+  "liq": 1804297.15,
+  "before": "DANGER",
+  "before_score": 71,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "known_canonical_solana_mint",
+   "mint_authority_still_enabled",
+   "missing_file_metadata",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "GOAT",
+  "mint": "CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump",
+  "liq": 1524940.77,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "KMNO",
+  "mint": "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS",
+  "liq": 1465753,
+  "before": "WARN",
+  "before_score": 40,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "high_holder_concentration",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "JLP",
+  "mint": "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4",
+  "liq": 1387759.9,
+  "before": "DANGER",
+  "before_score": 100,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "freeze_authority_active",
+   "freeze_authority_still_enabled",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "USDS",
+  "mint": "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA",
+  "liq": 1330195.31,
+  "before": "WARN",
+  "before_score": 55,
+  "after": "WARN",
+  "after_score": 55,
+  "flags": [
+   "freeze_authority_active",
+   "mint_authority_active",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "JTO",
+  "mint": "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+  "liq": 1275462.57,
+  "before": "WARN",
+  "before_score": 35,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "WBTC",
+  "mint": "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
+  "liq": 1262376.53,
+  "before": "DANGER",
+  "before_score": 73,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "high_holder_concentration",
+   "known_canonical_solana_mint",
+   "mint_authority_still_enabled",
+   "missing_file_metadata",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "SKR",
+  "mint": "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3",
+  "liq": 735884.43,
+  "before": "DANGER",
+  "before_score": 88,
+  "after": "DANGER",
+  "after_score": 88,
+  "flags": [
+   "high_holder_concentration",
+   "high_holder_correlation",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "bSOL",
+  "mint": "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1",
+  "liq": 610551.97,
+  "before": "WARN",
+  "before_score": 50,
+  "after": "WARN",
+  "after_score": 50,
+  "flags": [
+   "live_scan_cannot_clear_token",
+   "mint_authority_active",
+   "rugcheck_returned_no_holder_or_liquidity_data"
+  ]
+ },
+ {
+  "symbol": "ORCA",
+  "mint": "orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE",
+  "liq": 552585.95,
+  "before": "DANGER",
+  "before_score": 87,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "high_holder_concentration",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "missing_file_metadata",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "LIT",
+  "mint": "EicWvteVi2fWepEzS3FYWsnuPoP6caZfjnKqNvydLjCH",
+  "liq": 543992.33,
+  "before": "DANGER",
+  "before_score": 89,
+  "after": "DANGER",
+  "after_score": 89,
+  "flags": [
+   "large_amount_of_lp_unlocked",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "NEAR",
+  "mint": "3ZLekZYq2qkZiSpnSvabjit34tUkjSwD1JFuW9as9wBG",
+  "liq": 536419.9,
+  "before": "DANGER",
+  "before_score": 87,
+  "after": "DANGER",
+  "after_score": 87,
+  "flags": [
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "ME",
+  "mint": "MEFNBXixkEbait3xn9bkm8WsJzXtVsaJEn4c8Sam21u",
+  "liq": 488081.31,
+  "before": "WARN",
+  "before_score": 55,
+  "after": "WARN",
+  "after_score": 55,
+  "flags": [
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "NOS",
+  "mint": "nosXBVoaCTtYdLvKY6Csb4AC8JCdQKKAaWYtx2ZMoo7",
+  "liq": 466360.74,
+  "before": "GOOD",
+  "before_score": 16,
+  "after": "GOOD",
+  "after_score": 16,
+  "flags": [
+   "missing_file_metadata"
+  ]
+ },
+ {
+  "symbol": "SPX",
+  "mint": "J3NKxxXZcnNiMjKw9hYb2K4LUxgwB6t1FtPtQVsv3KFr",
+  "liq": 446311.91,
+  "before": "DANGER",
+  "before_score": 86,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "missing_file_metadata",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "GP",
+  "mint": "31k88G5Mq7ptbRDf3AM13HAq6wRQHXHikR8hik7wPygk",
+  "liq": 438157.62,
+  "before": "GOOD",
+  "before_score": 28,
+  "after": "GOOD",
+  "after_score": 28,
+  "flags": [
+   "high_holder_concentration",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "WBTC",
+  "mint": "5XZw2LKTyrfvfiskJ78AMpackRjPcyCif1WhUsPDuVqQ",
+  "liq": 419131.03,
+  "before": "DANGER",
+  "before_score": 100,
+  "after": "DANGER",
+  "after_score": 100,
+  "flags": [
+   "freeze_authority_active",
+   "freeze_authority_still_enabled",
+   "high_ownership",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "HNT",
+  "mint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
+  "liq": 411663.49,
+  "before": "DANGER",
+  "before_score": 86,
+  "after": "DANGER",
+  "after_score": 86,
+  "flags": [
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "CLOUD",
+  "mint": "CLoUDKc4Ane7HeQcPpE3YHnznRxhMimJ4MyaUqyHFzAu",
+  "liq": 396251.56,
+  "before": "WARN",
+  "before_score": 56,
+  "after": "WARN",
+  "after_score": 56,
+  "flags": [
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "PYTH",
+  "mint": "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
+  "liq": 379832.9,
+  "before": "GOOD",
+  "before_score": 12,
+  "after": "GOOD",
+  "after_score": 12,
+  "flags": [
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "PYUSD ",
+  "mint": "DuXfm3HPvY5i2VP4nujH5HYRE28EVwwuPm8D63Ahzwya",
+  "liq": 350776.98,
+  "before": "DANGER",
+  "before_score": 85,
+  "after": "DANGER",
+  "after_score": 85,
+  "flags": [
+   "freeze_authority_active",
+   "freeze_authority_still_enabled",
+   "high_market_cap_per_holder",
+   "high_ownership",
+   "large_amount_of_lp_unlocked",
+   "low_amount_of_lp_providers",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "Bonk",
+  "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+  "liq": 307271.23,
+  "before": "GOOD",
+  "before_score": 7,
+  "after": "GOOD",
+  "after_score": 7,
+  "flags": [
+   "known_canonical_solana_mint",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "RENDER",
+  "mint": "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",
+  "liq": 281548.15,
+  "before": "DANGER",
+  "before_score": 100,
+  "after": "DANGER",
+  "after_score": 100,
+  "flags": [
+   "freeze_authority_active",
+   "freeze_authority_still_enabled",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "JupSOL",
+  "mint": "jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v",
+  "liq": 265107.29,
+  "before": "DANGER",
+  "before_score": 86,
+  "after": "GOOD",
+  "after_score": 20,
+  "flags": [
+   "established_token_administrative_flags_only",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "MLG",
+  "mint": "7XJiwLDrjzxDYdZipnJXzpr1iDTmK55XixSFAa7JgNEL",
+  "liq": 263539.68,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "OPENAI",
+  "mint": "PreweJYECqtQwBtpxHL171nL2K6umo692gTm7Q3rpgF",
+  "liq": 237953.93,
+  "before": "DANGER",
+  "before_score": 100,
+  "after": "DANGER",
+  "after_score": 100,
+  "flags": [
+   "fee_config_enabled",
+   "freeze_authority_active",
+   "freeze_authority_still_enabled",
+   "high_holder_concentration",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "permanent_control_enabled"
+  ]
+ },
+ {
+  "symbol": "ZBCN",
+  "mint": "ZBCNpuD7YMXzTHB2fhGkGi78MNsHGLRXUhRewNRm9RU",
+  "liq": 211461.53,
+  "before": "WARN",
+  "before_score": 40,
+  "after": "WARN",
+  "after_score": 40,
+  "flags": [
+   "high_holder_concentration",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "ORE",
+  "mint": "oreoU2P8bN6jkk3jbaiVxYnG1dCXcYxwhwyK9jSybcp",
+  "liq": 177247.25,
+  "before": "DANGER",
+  "before_score": 87,
+  "after": "DANGER",
+  "after_score": 87,
+  "flags": [
+   "high_holder_concentration",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "three",
+  "mint": "FeMbDoX7R1Psc4GEcvJdsbNbZA3bfztcyDCatJVJpump",
+  "liq": 173870.78,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "$WIF",
+  "mint": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+  "liq": 150026.52,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "DOOD",
+  "mint": "DvjbEsdca43oQcw2h3HW1CT7N3x5vRcr3QrvTUHnXvgV",
+  "liq": 147806,
+  "before": "WARN",
+  "before_score": 55,
+  "after": "WARN",
+  "after_score": 55,
+  "flags": [
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "ANTHROPIC",
+  "mint": "Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw",
+  "liq": 120074.72,
+  "before": "DANGER",
+  "before_score": 100,
+  "after": "DANGER",
+  "after_score": 100,
+  "flags": [
+   "fee_config_enabled",
+   "freeze_authority_active",
+   "freeze_authority_still_enabled",
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "permanent_control_enabled"
+  ]
+ },
+ {
+  "symbol": "GHOST",
+  "mint": "BBKPiLM9KjdJW7oQSKt99RVWcZdhF6sEHRKnwqeBGHST",
+  "liq": 117150.5,
+  "before": "GOOD",
+  "before_score": 1,
+  "after": "GOOD",
+  "after_score": 1,
+  "flags": []
+ },
+ {
+  "symbol": "xSOL",
+  "mint": "4sWNB8zGWHkh6UnmwiEtzNxL4XrN7uK9tosbESbJFfVs",
+  "liq": 114373.05,
+  "before": "DANGER",
+  "before_score": 86,
+  "after": "DANGER",
+  "after_score": 86,
+  "flags": [
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "name_mismatch"
+  ]
+ },
+ {
+  "symbol": "SAMO",
+  "mint": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "liq": 96659.46,
+  "before": "GOOD",
+  "before_score": 22,
+  "after": "GOOD",
+  "after_score": 22,
+  "flags": [
+   "missing_file_metadata",
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "MET",
+  "mint": "METvsvVRapdj9cFLzq4Tr43xK4tAjQfwX76z3n6mWQL",
+  "liq": 91106.58,
+  "before": "GOOD",
+  "before_score": 12,
+  "after": "GOOD",
+  "after_score": 12,
+  "flags": [
+   "mutable_metadata"
+  ]
+ },
+ {
+  "symbol": "TNSR",
+  "mint": "TNSRxcUxoT9xBG3de7PiJyTDYu7kskLqcpddxnEJAS6",
+  "liq": 68370.05,
+  "before": "DANGER",
+  "before_score": 88,
+  "after": "DANGER",
+  "after_score": 88,
+  "flags": [
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata",
+   "single_holder_ownership",
+   "top_10_holders_high_ownership"
+  ]
+ },
+ {
+  "symbol": "IO",
+  "mint": "BZLbGTNCSFfoth2GYDtwr7e4imWzpR5jqcUuGEwr646K",
+  "liq": 66439.36,
+  "before": "WARN",
+  "before_score": 42,
+  "after": "WARN",
+  "after_score": 42,
+  "flags": [
+   "high_holder_concentration",
+   "mutable_metadata",
+   "single_holder_ownership"
+  ]
+ },
+ {
+  "symbol": "ai16z",
+  "mint": "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC",
+  "liq": 58366.5,
+  "before": "DANGER",
+  "before_score": 86,
+  "after": "DANGER",
+  "after_score": 86,
+  "flags": [
+   "mint_authority_active",
+   "mint_authority_still_enabled",
+   "mutable_metadata"
+  ]
+ }
+]
