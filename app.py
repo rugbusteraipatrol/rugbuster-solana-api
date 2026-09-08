@@ -13,7 +13,13 @@ from flask import Flask, jsonify, request
 from psycopg2.extras import Json, RealDictCursor
 
 from build_identity import build_identity
-from freshness import assess, is_servable_as_current, now_utc, withhold_verdict
+from freshness import (
+    LIVE_CACHE_MAX_AGE,
+    assess,
+    is_servable_as_current,
+    now_utc,
+    withhold_verdict,
+)
 from scoring import SCORING_VERSION, score_live_rugcheck_report, score_scan_row
 
 
@@ -170,8 +176,68 @@ def request_live_rugcheck(address: str) -> dict[str, Any] | None:
             return None
 
 
+def with_identity(payload: dict[str, Any]) -> dict[str, Any]:
+    """Attach build provenance to any response leaving this service.
+
+    Every exit needs it, not only the successful ones: a review cannot tell
+    which code produced an error or an UNKNOWN either, and those are the
+    answers most likely to be argued about.
+    """
+    enriched = dict(payload)
+    enriched.update(build_identity(SCORING_VERSION))
+    return enriched
+
+
+def refresh_stale_record(address: str, state: dict[str, Any]) -> dict[str, Any] | None:
+    """Get a current reading for a token whose stored evidence is not current.
+
+    Checks the live cache before the network. Returns None when neither can
+    supply one, leaving the caller to withhold the verdict.
+    """
+    try:
+        ensure_live_cache_schema()
+        cached_live = fetch_live_cache(address)
+    except Exception:
+        cached_live = None
+
+    if cached_live is not None:
+        result = live_cache_result(cached_live, address)
+        result["source"] = "live_cache_refresh"
+        result["refreshed_stale_record_observed_at"] = state["observed_at"]
+        return result
+
+    try:
+        report = request_live_rugcheck(address)
+    except Exception:
+        report = None
+    if report is None:
+        return None
+
+    live = score_live_rugcheck_report(report)
+    try:
+        insert_live_cache(address, live, report)
+    except Exception:
+        pass
+    observed = now_utc().isoformat()
+    live.update(
+        {
+            "ok": True,
+            "address": address,
+            "chain": "solana",
+            "source": "live_rugcheck_refresh",
+            "scanned_at": observed,
+            "observed_at": observed,
+            "fetched_at": observed,
+            "data_freshness": "FRESH",
+            "age_seconds": 0,
+            "refreshed_stale_record_observed_at": state["observed_at"],
+        }
+    )
+    return with_identity(live)
+
+
 def cache_miss_response(address: str, source: str = "cache_miss") -> dict[str, Any]:
-    return {
+    return with_identity({
         "ok": True,
         "address": address,
         "chain": "solana",
@@ -180,13 +246,24 @@ def cache_miss_response(address: str, source: str = "cache_miss") -> dict[str, A
         "risk_flags": ["not_in_intelligence_db"],
         "source": source,
         "scanned_at": None,
+        "observed_at": None,
+        "fetched_at": now_utc().isoformat(),
+        "data_freshness": "UNDATED",
+        "age_seconds": None,
         "note": (
             "No verified score is available. Treat this token as unverified."
         ),
-    }
+    })
 
 
 def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
+    """A stored live verdict, aged the same way a collector row is.
+
+    The SQL that selects these rows has a lower age bound but no upper one, so
+    a row written with a future timestamp would pass the query. Assessing the
+    row here as well means one place decides what "current" means, rather than
+    the answer depending on which path a request happened to take.
+    """
     flags = row.get("risk_flags") or []
     if isinstance(flags, str):
         try:
@@ -194,8 +271,8 @@ def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             flags = []
     risk_value = row.get("risk_score")
-    scanned_at = row.get("created_at")
-    return {
+    state = assess(row.get("created_at"), max_age=LIVE_CACHE_MAX_AGE)
+    result = with_identity({
         "ok": True,
         "address": row.get("contract_address") or address,
         "chain": "solana",
@@ -206,8 +283,15 @@ def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
         "token_name": row.get("token_name"),
         "token_symbol": row.get("token_symbol"),
         "source": "live_cache",
-        "scanned_at": scanned_at.isoformat() if hasattr(scanned_at, "isoformat") else scanned_at,
-    }
+        "scanned_at": state["observed_at"],
+        "observed_at": state["observed_at"],
+        "fetched_at": now_utc().isoformat(),
+        "data_freshness": state["freshness"],
+        "age_seconds": state["age_seconds"],
+    })
+    if is_servable_as_current(state):
+        return result
+    return with_identity(withhold_verdict(result, state))
 
 
 @app.get("/")
@@ -253,18 +337,18 @@ def health():
 def score():
     address = str(request.args.get("address") or "").strip()
     if not is_valid_solana_mint(address):
-        return jsonify({"ok": False, "error": "invalid solana mint address"}), 400
+        return jsonify(with_identity({"ok": False, "error": "invalid solana mint address"})), 400
 
     try:
         row = fetch_latest_scan(address)
     except Exception:
         return (
             jsonify(
-                {
+                with_identity({
                     "ok": False,
                     "error": "intelligence db unavailable",
                     "source": "db_error",
-                }
+                })
             ),
             503,
         )
@@ -327,38 +411,17 @@ def score():
     if is_servable_as_current(state):
         return jsonify(result)
 
-    # The observation is too old, undated or impossible. Try to replace it with
-    # a live reading before falling back to withholding the verdict.
-    try:
-        report = request_live_rugcheck(address)
-    except Exception:
-        report = None
+    # The observation is too old, undated or impossible. Replace it with a
+    # current reading if one can be had, and prefer an already-cached live
+    # result over another upstream call: the stale collector row does not go
+    # away, so without this every subsequent request re-fetches the same token
+    # and an upstream outage returns UNKNOWN while valid recent evidence sits
+    # in the cache unread.
+    refreshed = refresh_stale_record(address, state)
+    if refreshed is not None:
+        return jsonify(refreshed)
 
-    if report is not None:
-        live = score_live_rugcheck_report(report)
-        try:
-            insert_live_cache(address, live, report)
-        except Exception:
-            pass
-        observed = now_utc().isoformat()
-        live.update(
-            {
-                "ok": True,
-                "address": address,
-                "chain": "solana",
-                "source": "live_rugcheck_refresh",
-                "scanned_at": observed,
-                "observed_at": observed,
-                "fetched_at": observed,
-                "data_freshness": "FRESH",
-                "age_seconds": 0,
-                "refreshed_stale_record_observed_at": state["observed_at"],
-                **build_identity(SCORING_VERSION),
-            }
-        )
-        return jsonify(live)
-
-    return jsonify(withhold_verdict(result, state))
+    return jsonify(with_identity(withhold_verdict(result, state)))
 
 
 if __name__ == "__main__":

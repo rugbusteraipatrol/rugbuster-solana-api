@@ -164,3 +164,106 @@ def test_health_carries_build_identity():
         body = app.app.test_client().get("/health").get_json()
     assert body["scoring_version"] == app.SCORING_VERSION
     assert "build_commit" in body
+
+
+# --- defects found by independent review of 96d607f2 ------------------------
+
+def test_a_stale_row_prefers_a_valid_live_cache_over_another_upstream_call():
+    """The stale collector row does not go away, so every later request would
+    otherwise re-fetch the same token. Reviewed as P1."""
+    cached = {
+        "contract_address": MINT,
+        "risk_score": 30,
+        "label": "GOOD",
+        "rugcheck_score": 900,
+        "risk_flags": ["mutable_metadata"],
+        "token_name": "Cached",
+        "token_symbol": "C",
+        "created_at": datetime.now(timezone.utc) - timedelta(minutes=10),
+    }
+    with mock.patch.object(app, "fetch_latest_scan", return_value=_row("2025-01-01T00:00:00Z")), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=cached), \
+         mock.patch.object(app, "request_live_rugcheck") as upstream:
+        body = _get()
+    assert body["source"] == "live_cache_refresh"
+    assert body["label"] == "GOOD"
+    assert upstream.call_count == 0, "a valid cached reading must be used before the network"
+
+
+def test_repeated_requests_on_a_stale_row_do_not_repeat_the_upstream_call():
+    cached = {
+        "contract_address": MINT, "risk_score": 30, "label": "GOOD",
+        "rugcheck_score": 900, "risk_flags": [], "token_name": "C", "token_symbol": "C",
+        "created_at": datetime.now(timezone.utc) - timedelta(minutes=5),
+    }
+    with mock.patch.object(app, "fetch_latest_scan", return_value=_row("2025-01-01T00:00:00Z")), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=cached), \
+         mock.patch.object(app, "request_live_rugcheck") as upstream:
+        _get(); _get(); _get()
+    assert upstream.call_count == 0
+
+
+def test_a_live_cache_hit_carries_identity_and_both_timestamps():
+    """Reviewed as P2: only one success path had been covered."""
+    cached = {
+        "contract_address": MINT, "risk_score": 46, "label": "WARN",
+        "rugcheck_score": 600, "risk_flags": ["mutable_metadata"],
+        "token_name": "Cached", "token_symbol": "C",
+        "created_at": datetime.now(timezone.utc) - timedelta(minutes=10),
+    }
+    with mock.patch.object(app, "fetch_latest_scan", return_value=None), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=cached):
+        body = _get()
+    for field in ("build_commit", "scoring_version", "observed_at", "fetched_at", "data_freshness"):
+        assert field in body, f"live-cache response is missing {field}"
+
+
+def test_a_cache_miss_carries_identity():
+    with mock.patch.object(app, "fetch_latest_scan", return_value=None), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=None), \
+         mock.patch.object(app, "request_live_rugcheck", return_value=None):
+        body = _get()
+    assert body["label"] == "UNKNOWN"
+    assert body["build_commit"] and body["scoring_version"]
+
+
+def test_an_expired_live_cache_row_is_withheld_not_served():
+    """The cache SQL has no upper time bound, so the row is aged here too."""
+    cached = {
+        "contract_address": MINT, "risk_score": 5, "label": "GOOD",
+        "rugcheck_score": 1, "risk_flags": [], "token_name": "Old", "token_symbol": "O",
+        "created_at": datetime.now(timezone.utc) - timedelta(days=30),
+    }
+    with mock.patch.object(app, "fetch_latest_scan", return_value=None), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=cached):
+        body = _get()
+    assert body["label"] == "UNKNOWN"
+    assert body["last_known_label"] == "GOOD"
+
+
+def test_a_future_dated_live_cache_row_is_withheld():
+    cached = {
+        "contract_address": MINT, "risk_score": 5, "label": "GOOD",
+        "rugcheck_score": 1, "risk_flags": [], "token_name": "F", "token_symbol": "F",
+        "created_at": datetime.now(timezone.utc) + timedelta(days=1),
+    }
+    with mock.patch.object(app, "fetch_latest_scan", return_value=None), \
+         mock.patch.object(app, "ensure_live_cache_schema"), \
+         mock.patch.object(app, "fetch_live_cache", return_value=cached):
+        body = _get()
+    assert body["data_freshness"] == "INVALID"
+    assert body["label"] == "UNKNOWN"
+
+
+def test_a_stored_risk_percent_is_reported_as_inherited_not_recomputed():
+    """Reviewed correction: derive_score uses a stored risk_percent unchanged,
+    so the running scoring_version did not produce that number."""
+    recent = datetime.now(timezone.utc) - timedelta(minutes=5)
+    with mock.patch.object(app, "fetch_latest_scan", return_value=_row(recent, "DANGER", 85)):
+        body = _get()
+    assert "verdict_from_stored_risk_percent" in body["risk_flags"]

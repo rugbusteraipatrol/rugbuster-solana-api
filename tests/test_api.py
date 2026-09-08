@@ -153,10 +153,9 @@ def test_recent_live_cache_hit_skips_rugcheck(monkeypatch, client):
             "risk_flags": ["mutable_metadata"],
             "token_name": "Cached Live",
             "token_symbol": "CL",
-            # Relative, not fixed: a hard-coded date silently ages past the
-        # freshness limit and turns every collector test into a staleness
-        # test. Tests that mean to exercise staleness set it explicitly.
-        "created_at": datetime.now(timezone.utc) - timedelta(hours=1),
+            # Comfortably inside LIVE_CACHE_MAX_AGE. Sitting exactly on the
+            # boundary makes the test depend on its own execution time.
+            "created_at": datetime.now(timezone.utc) - timedelta(minutes=10),
         },
     )
 
@@ -173,7 +172,10 @@ def test_recent_live_cache_hit_skips_rugcheck(monkeypatch, client):
 def test_evm_address_is_rejected(client):
     response = client.get("/score?address=0x2801225bfd2cb8959e344ebf37bf7f92632c9a51")
     assert response.status_code == 400
-    assert response.get_json() == {"ok": False, "error": "invalid solana mint address"}
+    body = response.get_json()
+    assert body["ok"] is False
+    assert body["error"] == "invalid solana mint address"
+    assert body["scoring_version"] and body["build_commit"]
 
 
 def test_malformed_collector_record_falls_back_safely(monkeypatch, client):
@@ -201,11 +203,13 @@ def test_collector_db_error_is_503(monkeypatch, client):
     monkeypatch.setattr(api, "fetch_latest_scan", fail)
     response = client.get(f"/score?address={USDC}")
     assert response.status_code == 503
-    assert response.get_json() == {
-        "ok": False,
-        "error": "intelligence db unavailable",
-        "source": "db_error",
-    }
+    body = response.get_json()
+    # Subset rather than equality: every response now carries build identity,
+    # errors included, so a reviewer can tell which code produced them.
+    assert body["ok"] is False
+    assert body["error"] == "intelligence db unavailable"
+    assert body["source"] == "db_error"
+    assert body["scoring_version"] and body["build_commit"]
 
 
 def test_live_cache_schema_error_degrades_to_unknown(monkeypatch, client):

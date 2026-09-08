@@ -6,14 +6,18 @@ one exists, with no age limit. An independent review reproduced a row dated
 `scoring_version` filter live on `solana_live_cache`, a different path that is
 only reached when no collector row exists at all.
 
-The two paths go stale in different ways, and conflating them is what hid this:
+Both paths can be stale in *evidence*, and both can be stale in *formula*.
 
-* the **collector path** re-scores the stored row on every request
-  (`score_scan_row`), so the verdict formula is always current and only the
-  *observation* is old -- holders, liquidity and authorities as they were on
-  the day the collector looked;
-* the **live-cache path** stores a computed verdict, so it can also be stale in
-  *formula*, which is what the `scoring_version` filter is for.
+An earlier version of this note claimed the collector path always recomputes
+under current rules, so only its observation could age. That was wrong, and an
+independent review caught it: `derive_score` uses a stored `risk_percent`
+unchanged when the row carries one, and otherwise may map a stored label. So a
+collector row can carry a verdict produced by whichever version wrote it, and
+the running `scoring_version` did not necessarily produce the number being
+served. `derive_score` now records which of the three it used --
+`verdict_from_stored_risk_percent`, `verdict_recomputed_from_rugcheck_score` or
+`verdict_from_stored_label` -- so provenance travels with the answer instead of
+being assumed.
 
 Two timestamps are therefore reported separately, because one row can be read
 today and still describe last year:
@@ -38,6 +42,11 @@ from typing import Any
 
 # How long a collector observation may be served as current.
 COLLECTOR_MAX_AGE = timedelta(hours=24)
+
+# The live cache's own SQL already excludes rows older than this, but it has no
+# upper bound, so a row written with a future timestamp passes that filter.
+# Assessing it here too keeps one definition of "current" for both paths.
+LIVE_CACHE_MAX_AGE = timedelta(hours=1)
 
 # A timestamp may sit this far in the future before it is treated as broken
 # rather than as clock skew between the writer and this process.

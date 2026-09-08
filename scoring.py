@@ -154,11 +154,18 @@ def derive_score(record: dict[str, Any], row_label: str | None) -> tuple[int, fl
     rugcheck_usable = _rugcheck_reliable(record, rugcheck_score)
 
     if precomputed is not None:
+        # The stored number is used unchanged, so this verdict was produced by
+        # whichever version of the scorer wrote the row -- not by the version
+        # running now. Recorded, because a response that carries the current
+        # scoring_version while serving an inherited number misstates its own
+        # provenance.
         risk = _clamp(precomputed)
+        flags.append("verdict_from_stored_risk_percent")
     else:
         label = str(row_label or record.get("label") or "").upper()
         if rugcheck_score is not None and rugcheck_usable:
             risk = rugcheck_to_risk(rugcheck_score)
+            flags.append("verdict_recomputed_from_rugcheck_score")
         elif rugcheck_score is not None:
             # RugCheck returned a score, but this token has no real trading
             # history yet (see _rugcheck_reliable) -- that score is not a
@@ -168,7 +175,10 @@ def derive_score(record: dict[str, Any], row_label: str | None) -> tuple[int, fl
             risk = 55
             flags.append("rugcheck_score_unreliable_fresh_token")
         else:
+            # Mapped from a stored label: the weakest provenance of the three,
+            # since the label itself came from an earlier run.
             risk = LABEL_FALLBACKS.get(label, 55)
+            flags.append("verdict_from_stored_label")
 
         creator_rate = _creator_rug_rate(record)
         if creator_rate is not None and creator_rate >= 80:
@@ -234,7 +244,7 @@ def score_scan_row(row: dict[str, Any]) -> dict[str, Any]:
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.1"
+SCORING_VERSION = "2026.09.2"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
