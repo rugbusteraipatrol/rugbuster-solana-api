@@ -114,13 +114,19 @@ def test_no_flags_and_no_account_is_unknown_not_clean():
     """Absence of a flag does not prove absence of an authority."""
     result = technical_controls(_payload(risk_flags=[]))
     assert result["status"] == UNKNOWN
-    assert result["read_from_account"] is False
+    assert result["active_authorities"] == []
+    assert set(result["unread_authorities"]) >= {"mint", "freeze"}
 
 
-def test_reading_the_account_directly_is_recorded():
+def test_reading_the_account_records_coverage_per_authority():
+    """`read_from_account` was one boolean for the whole account, which is what
+    let a token dict with only `decimals` report itself as checked. Coverage is
+    per authority now."""
     result = technical_controls(_payload(risk_flags=[]), _report())
-    assert result["read_from_account"] is True
-    assert result["status"] == OK
+    assert result["active_authorities"] == ["mint"]
+    assert result["revoked_authorities"] == ["freeze"]
+    assert "update" in result["unread_authorities"]
+    assert result["status"] == PARTIAL
 
 
 # --- distribution ----------------------------------------------------------
@@ -265,3 +271,96 @@ def test_a_withheld_response_still_explains_itself():
 
     assert body["label"] == "UNKNOWN"
     assert body["evidence"]["coverage"]["data_freshness"] == "STALE"
+
+
+# --- authority presence: missing, explicit null and address are three things
+
+from evidence import ABSENT, PARTIAL, PRESENT, authority_readings  # noqa: E402
+
+
+def test_a_partial_token_object_does_not_verify_absence():
+    """A token dict holding only `decimals` said nothing about any authority.
+    Reporting the account as read because the dict was non-empty is how "we did
+    not check" became "there is nothing there"."""
+    result = technical_controls({"risk_flags": []}, {"token": {"decimals": 9}})
+    assert result["status"] == UNKNOWN
+    assert result["active_authorities"] == []
+    assert set(result["unread_authorities"]) >= {"mint", "freeze"}
+
+
+def test_an_explicit_raw_authority_survives_without_a_flag():
+    """The address is in the account. No flag mentioning it does not erase it."""
+    result = technical_controls(
+        {"risk_flags": ["known_canonical_solana_mint"]},
+        {"token": {"mintAuthority": "AuthorityA", "freezeAuthority": None}},
+    )
+    assert "mint" in result["active_authorities"]
+    assert "freeze" in result["revoked_authorities"]
+
+
+def test_explicit_null_reads_as_revoked_not_unknown():
+    readings = authority_readings({"risk_flags": []}, {"token": {"mintAuthority": None}})
+    assert readings["mint"] == ABSENT
+
+
+def test_a_missing_field_reads_as_unknown_not_revoked():
+    readings = authority_readings({"risk_flags": []}, {"token": {"decimals": 9}})
+    assert readings["mint"] == UNKNOWN
+    assert readings["freeze"] == UNKNOWN
+
+
+def test_an_address_reads_as_present():
+    readings = authority_readings({"risk_flags": []}, {"token": {"mintAuthority": "Abc"}})
+    assert readings["mint"] == PRESENT
+
+
+def test_a_flag_adds_positive_evidence_where_the_account_was_not_read():
+    readings = authority_readings({"risk_flags": ["mint_authority_still_enabled"]}, None)
+    assert readings["mint"] == PRESENT
+    assert readings["freeze"] == UNKNOWN, "no flag is not a denial"
+
+
+def test_a_flag_wins_over_a_contradicting_null():
+    """A contradiction is not a reason to report the reassuring half."""
+    readings = authority_readings(
+        {"risk_flags": ["mint_authority_active"]}, {"token": {"mintAuthority": None}}
+    )
+    assert readings["mint"] == PRESENT
+
+
+def test_partial_coverage_is_reported_as_partial():
+    result = technical_controls({"risk_flags": []}, {"token": {"mintAuthority": "Abc"}})
+    assert result["status"] == PARTIAL
+    assert result["active_authorities"] == ["mint"]
+    assert "freeze" in result["unread_authorities"]
+
+
+def test_full_coverage_reports_ok():
+    token = {"mintAuthority": None, "freezeAuthority": None, "updateAuthority": None}
+    result = technical_controls(
+        {"risk_flags": ["balance_mutable_authority", "non_transferable"]}, {"token": token}
+    )
+    assert result["status"] == OK
+    assert result["unread_authorities"] == []
+
+
+def test_an_unread_authority_is_never_listed_as_revoked():
+    result = technical_controls({"risk_flags": []}, {"token": {"mintAuthority": "Abc"}})
+    assert set(result["revoked_authorities"]).isdisjoint(result["unread_authorities"])
+
+
+def test_coverage_reports_retrieval_and_observation_separately():
+    """Same vocabulary as the Avalanche service, so one contract reads the same
+    on both: observed_at is null when no upstream gives us one."""
+    payload = _payload(
+        observed_at=None,
+        retrieved_at="2026-09-08T12:00:00+00:00",
+        fetched_at="2026-09-08T12:00:01+00:00",
+        observation_coverage="RETRIEVAL_TIME_ONLY",
+        age_seconds=None,
+    )
+    result = coverage(payload)
+    assert result["observed_at"] is None
+    assert result["retrieved_at"].startswith("2026-09-08")
+    assert result["observation_coverage"] == "RETRIEVAL_TIME_ONLY"
+    assert result["age_seconds"] is None

@@ -31,6 +31,7 @@ from typing import Any
 OK = "OK"
 UNKNOWN = "UNKNOWN"
 NOT_COLLECTED = "NOT_COLLECTED"
+PARTIAL = "PARTIAL"
 
 # Flags this service emits, or normalises out of a RugCheck report, that
 # describe a power the mint's controller holds.
@@ -55,12 +56,63 @@ DISTRIBUTION_FLAGS = {
 
 METADATA_FLAGS = {"mutable_metadata", "missing_file_metadata"}
 
+# Raw account fields naming an authority, and the power each one carries.
+RAW_AUTHORITY_FIELDS = {
+    "mintAuthority": "mint",
+    "freezeAuthority": "freeze",
+    "updateAuthority": "update",
+}
+
+# Every power we know how to look for. An authority absent from a reading is
+# UNKNOWN, never assumed revoked.
+KNOWN_AUTHORITIES = sorted(set(RAW_AUTHORITY_FIELDS.values()) | set(AUTHORITY_FLAGS.values()))
+
+PRESENT = "PRESENT"
+ABSENT = "ABSENT"
+
 
 def _flags(payload: dict[str, Any]) -> list[str]:
     flags = payload.get("risk_flags") or []
     if isinstance(flags, str):
         return []
     return [str(flag) for flag in flags]
+
+
+def authority_readings(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, str]:
+    """Per-authority reading: PRESENT, ABSENT or UNKNOWN.
+
+    Field presence carries three distinct meanings and the first version of
+    this collapsed them into `bool(token)`. A token object holding nothing but
+    `decimals` reported the whole account as read, and an explicit
+    `mintAuthority` address vanished whenever no flag happened to mention it.
+
+      key missing   -> UNKNOWN. Nothing was said about this power.
+      value is None -> ABSENT.  The account says it is revoked.
+      an address    -> PRESENT. Someone holds it.
+
+    Flags add positive evidence only. An authority nobody flagged is not
+    thereby revoked -- absence of a flag is absence of a statement, and
+    treating it as a denial is how a reading of "we did not check" becomes
+    "there is nothing there".
+    """
+    readings = {name: UNKNOWN for name in KNOWN_AUTHORITIES}
+
+    token = (report or {}).get("token")
+    if isinstance(token, dict):
+        for field, authority in RAW_AUTHORITY_FIELDS.items():
+            if field not in token:
+                continue
+            readings[authority] = ABSENT if token[field] is None else PRESENT
+
+    for flag in _flags(payload):
+        authority = AUTHORITY_FLAGS.get(flag)
+        if authority:
+            # Positive evidence wins over an unread field, and over a raw null
+            # it disagrees with: a contradiction is not a reason to report the
+            # reassuring half.
+            readings[authority] = PRESENT
+
+    return readings
 
 
 def technical_controls(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -71,26 +123,38 @@ def technical_controls(payload: dict[str, Any], report: dict[str, Any] | None = 
     exposure to it. Scoring the two together is what produced DANGER on
     JitoSOL and Jupiter's own LP token while memecoins passed -- the flags were
     right, reading them as a rug verdict was not.
-    """
-    flags = _flags(payload)
-    authorities = sorted({AUTHORITY_FLAGS[flag] for flag in flags if flag in AUTHORITY_FLAGS})
-    metadata = sorted(flag for flag in flags if flag in METADATA_FLAGS)
 
-    token = (report or {}).get("token") if isinstance((report or {}).get("token"), dict) else {}
-    read_directly = bool(token)
+    Coverage is reported per authority rather than as one boolean for the
+    account, because a partial reading is the normal case and rounding it up to
+    "checked" is the failure this dimension exists to avoid.
+    """
+    readings = authority_readings(payload, report)
+    metadata = sorted(flag for flag in _flags(payload) if flag in METADATA_FLAGS)
+
+    active = sorted(name for name, value in readings.items() if value == PRESENT)
+    revoked = sorted(name for name, value in readings.items() if value == ABSENT)
+    unread = sorted(name for name, value in readings.items() if value == UNKNOWN)
+
+    if not unread:
+        status = OK
+    elif active or revoked:
+        status = PARTIAL
+    else:
+        status = UNKNOWN
 
     return {
-        # A response built purely from flags cannot prove an authority is
-        # absent -- only that no flag said so. Without the raw account, the
-        # honest answer is UNKNOWN.
-        "status": OK if read_directly else (OK if authorities else UNKNOWN),
-        "active_authorities": authorities,
+        "status": status,
+        "authority_readings": readings,
+        "active_authorities": active,
+        "revoked_authorities": revoked,
+        "unread_authorities": unread,
         "metadata_flags": metadata,
-        "read_from_account": read_directly,
         "note": (
             "Powers held now. Legitimate for some asset classes -- a bridge must "
             "mint, a regulated stablecoin must be able to freeze -- and still "
-            "exposure for a holder. issuer_identity never cancels this."
+            "exposure for a holder. issuer_identity never cancels this. An "
+            "authority under unread_authorities was not checked; it is not "
+            "reported as revoked."
         ),
     }
 
@@ -198,9 +262,18 @@ def coverage(payload: dict[str, Any], report: dict[str, Any] | None = None) -> d
     return {
         "status": OK if payload.get("data_freshness") else UNKNOWN,
         "data_freshness": payload.get("data_freshness"),
+        # Each moment under its own name, matching the Avalanche service's
+        # vocabulary so one contract reads the same on both. `observed_at` is
+        # null on every upstream-derived path here: RugCheck's report carries no
+        # observation time, so we know when we retrieved it and not when it was
+        # gathered.
         "observed_at": payload.get("observed_at"),
+        "retrieved_at": payload.get("retrieved_at"),
+        "computed_at": payload.get("computed_at"),
         "fetched_at": payload.get("fetched_at"),
+        "observation_coverage": payload.get("observation_coverage"),
         "age_seconds": payload.get("age_seconds"),
+        "retrieval_age_seconds": payload.get("retrieval_age_seconds"),
         "source": payload.get("source"),
         "verdict_provenance": provenance,
         "note": (
