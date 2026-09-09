@@ -190,8 +190,11 @@ def distribution(payload: dict[str, Any], report: dict[str, Any] | None = None) 
         "owners_identified": bool(identified),
         "identified_holders": identified,
         "note": (
-            "Concentration held by: " + ", ".join(identified) + ". Each was "
-            "derived from a curated mint's own authority, not assumed from size."
+            "Concentration held by: " + ", ".join(identified) + ". Named, which "
+            "is not the same as safe: each is a program-derived address with no "
+            "private key, and the program governing it can itself be "
+            "upgradeable, so the control chain may end at a key nobody here has "
+            "identified. See KNOWN_PROTOCOL_VAULTS for the recorded chain."
             if identified else
             "Who the concentrated holders are has not been established. A high "
             "holder count does not make concentration benign."

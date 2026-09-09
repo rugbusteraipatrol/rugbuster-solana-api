@@ -35,6 +35,62 @@ sys.path.insert(0, str(ROOT))
 from scoring import KNOWN_PROTOCOL_VAULTS, KNOWN_SOLANA_MINTS  # noqa: E402
 
 RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/{mint}/report"
+SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+SYSTEM_PROGRAM = "11111111111111111111111111111111"
+UPGRADEABLE_LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
+
+
+def _rpc(method: str, params: list) -> dict:
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    request = urllib.request.Request(
+        SOLANA_RPC, data=body,
+        headers={"Content-Type": "application/json",
+                 "User-Agent": "rugbuster-vault-verification/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=40) as response:  # noqa: S310
+        return json.loads(response.read()).get("result") or {}
+
+
+def check_role_and_control(address: str) -> dict:
+    """What the address is, and who can move what it holds.
+
+    Authority and holdings say what an address does. This asks what it *is*:
+    a System-Program-owned account is a keypair somebody holds, and a keypair's
+    holdings are a person's, not a protocol's. A program-owned account has no
+    private key -- only that program's code can move it.
+
+    The follow-up matters as much: a program can be upgradeable, and then the
+    code governing the vault can be replaced by whoever holds that authority.
+    Reported rather than judged, because "program-owned" reads as beyond reach
+    and is not.
+    """
+    info = _rpc("getAccountInfo", [address, {"encoding": "jsonParsed"}]).get("value") or {}
+    owner = str(info.get("owner") or "")
+    result = {
+        "owner_program": owner,
+        "has_private_key": owner == SYSTEM_PROGRAM,
+        "program_upgrade_authority": None,
+        "program_upgrade_authority_is_single_key": None,
+    }
+    if not owner or result["has_private_key"]:
+        return result
+
+    program = _rpc("getAccountInfo", [owner, {"encoding": "jsonParsed"}]).get("value") or {}
+    if str(program.get("owner") or "") != UPGRADEABLE_LOADER:
+        return result
+    data = program.get("data")
+    program_data = ((data or {}).get("parsed") or {}).get("info", {}).get("programData")
+    if not program_data:
+        return result
+    record = _rpc("getAccountInfo", [program_data, {"encoding": "jsonParsed"}]).get("value") or {}
+    authority = ((record.get("data") or {}).get("parsed") or {}).get("info", {}).get("authority")
+    result["program_upgrade_authority"] = authority
+    if authority:
+        holder = _rpc("getAccountInfo", [authority, {"encoding": "jsonParsed"}]).get("value") or {}
+        result["program_upgrade_authority_is_single_key"] = (
+            str(holder.get("owner") or "") == SYSTEM_PROGRAM
+        )
+    return result
 
 
 def main() -> int:
@@ -74,15 +130,40 @@ def main() -> int:
         time.sleep(args.pause)
 
     unverified = []
-    for address, name in KNOWN_PROTOCOL_VAULTS.items():
+    for address, entry in KNOWN_PROTOCOL_VAULTS.items():
+        name = entry["name"]
         derived_from = sorted(authorities.get(address) or [])
         held = sorted(holdings.get(address) or [])
-        if derived_from and held:
+        control = check_role_and_control(address)
+
+        recorded_owner = entry.get("owner_program")
+        control_ok = (
+            control["has_private_key"] is False
+            and control["owner_program"] == recorded_owner
+        )
+        if derived_from and held and control_ok:
             print(f"OK  {name}")
             print(f"      authority of: {', '.join(derived_from)}")
             print(f"      holds:        {', '.join(held)}")
+            print(f"      owned by program: {control['owner_program']} (no private key)")
+            authority = control["program_upgrade_authority"]
+            if authority:
+                shape = ("a single key" if control["program_upgrade_authority_is_single_key"]
+                         else "a program account")
+                print(f"      !! that program is upgradeable by {authority} ({shape});")
+                print(f"         the control chain ends there and we have not identified it")
+            else:
+                print(f"      program is not upgradeable by a named authority")
             continue
+
         unverified.append((address, name))
+        if not control_ok:
+            if control["has_private_key"]:
+                print(f"!!  {name}: System-Program-owned -- this is a keypair somebody "
+                      f"holds, and a wallet's holdings are not a protocol's")
+            elif control["owner_program"] != recorded_owner:
+                print(f"!!  {name}: owner program is {control['owner_program']}, "
+                      f"recorded as {recorded_owner}")
         if not derived_from:
             print(f"!!  {name}: no curated mint names {address} as an authority")
         if not held:

@@ -443,39 +443,71 @@ EVIDENCE_NEUTRAL_FLAGS = {
 IDENTIFIED_HOLDER_FLAG_PREFIX = "concentration_held_by_"
 
 
-# Holder addresses we can name, and the two checks that let one in.
+# Holder addresses we can name, and the three checks that let one in.
 #
-# The exemption this list grants is narrow and worth stating exactly: it says
-# the concentration is *identified*, not that it is harmless. A distribution
-# finding asserts that a large share sits with someone nobody has named. When
-# the holder is named, that particular assertion is contradicted. The share is
-# still reported, and still large.
+# The exemption is narrow and worth stating exactly: it says the concentration
+# is *identified*, not that it is safe. A distribution finding asserts a large
+# share sits with someone nobody has named. Naming the holder contradicts that
+# assertion and nothing else. The share is still reported, and still large.
 #
-# Two conditions, and an entry needs both:
+# Three conditions, and an entry needs all three:
 #
 #   1. It is the mint or freeze authority of a mint already on
-#      KNOWN_SOLANA_MINTS -- a derivation from something curated by hand, not
-#      a claim typed in on its own.
-#   2. It is actually observed holding one of those mints. The list is read
-#      against holder tables, so an address that only ever appears as an
-#      authority cannot justify a holder exemption.
+#      KNOWN_SOLANA_MINTS -- a derivation from something curated by hand.
+#   2. It is observed holding one of those mints. The list is read against
+#      holder tables, so an address that only ever appears as an authority
+#      cannot justify a holder exemption.
+#   3. Its role and control are established on chain, not inferred from the
+#      first two. An address can be an authority and a holder and still be a
+#      person's wallet.
 #
-# The second condition was added after the first version failed it. The
-# Wormhole token bridge authority (BCD75RNBHrJJpW4dXVagL5mPjzRLnVZq4YirJdjEYMV7)
-# is the mint authority of both curated Wormhole assets and appears in no
-# holder table at all. Listing it did nothing today and would have exempted its
-# concentration later on a derivation that says only that it can mint -- which
-# is not a statement about whose tokens it holds.
+# Condition 2 was added after the Wormhole token bridge authority failed it --
+# an authority that appears in no holder table at all. Condition 3 was added on
+# review, correctly: authority plus holdings say what an address *does*, not
+# what it *is* or who moves it.
 #
-# `qa/verify_protocol_vaults.py` re-checks both conditions against live reports
-# and exits non-zero if either stops holding. A hand-kept address list
-# otherwise rots silently, clearing something it should not while nothing fails.
+# What condition 3 established for the one remaining entry, read from mainnet
+# on 9 September 2026:
+#
+#   AVzP2Ge... is owned by program PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu,
+#   not by the System Program. It is a program-derived address: no private key
+#   exists for it, and only that program's code can move what it holds. That is
+#   the role -- the Jupiter Perpetuals pool authority, holding perps collateral,
+#   which is why it is the largest holder of both curated wrapped assets.
+#
+# And what it did not establish, which belongs in the same breath:
+#
+#   That program is upgradeable. Its ProgramData names upgrade authority
+#   5myNNmEmPm3UAnJ2ggLEpnTFb9t9Gk8369wKw6n3uAKx, which is a plain
+#   System-Program-owned account -- a single private key, not a multisig
+#   program. So the code that governs the vault can be replaced by one
+#   unidentified key.
+#
+# The exemption still stands, because it only ever claimed identification. But
+# the control chain ends somewhere we cannot name, and a reader is told so
+# rather than left to assume a program-owned address is beyond reach. This is
+# the same reasoning applied to the `upgrade` power on the EVM side: history
+# and structure are evidence about code that can be replaced.
+#
+# `qa/verify_protocol_vaults.py` re-checks all three against live data.
 KNOWN_PROTOCOL_VAULTS = {
-    # Mint and freeze authority of JLP (Jupiter Perps LP, curated), and holder
-    # of WETH 64.3%, WBTC 60.4% and JLP 28.0% as of 9 September 2026. It holds
-    # the perps collateral, which is why it is the largest holder of both
-    # curated wrapped assets on this chain.
-    "AVzP2GeRmqGphJsMxWoqjpUifPpCret7LqWhD8NWQK49": "Jupiter Perps vault",
+    "AVzP2GeRmqGphJsMxWoqjpUifPpCret7LqWhD8NWQK49": {
+        "name": "Jupiter Perps pool authority",
+        # 1. derivation
+        "authority_of": ["JLP.mintAuthority", "JLP.freezeAuthority"],
+        # 2. observed holdings, 9 September 2026
+        "holds": ["WETH 64.3%", "WBTC 60.4%", "JLP 28.0%"],
+        # 3. role and control, read from mainnet
+        "owner_program": "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu",
+        "has_private_key": False,
+        "program_upgrade_authority": "5myNNmEmPm3UAnJ2ggLEpnTFb9t9Gk8369wKw6n3uAKx",
+        "program_upgrade_authority_is_single_key": True,
+    },
+}
+
+# Names only, for anything that just wants to print who a holder is.
+PROTOCOL_VAULT_NAMES = {
+    address: entry["name"] for address, entry in KNOWN_PROTOCOL_VAULTS.items()
 }
 
 # Concentration at or below these shares does not support the finding RugCheck
@@ -801,7 +833,7 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
     if unsupported:
         flags.append("distribution_findings_not_supported_by_holder_table")
         named = {
-            KNOWN_PROTOCOL_VAULTS[str(holder.get("owner"))]
+            PROTOCOL_VAULT_NAMES[str(holder.get("owner"))]
             for holder in _top_holders(report)
             if str(holder.get("owner") or "") in KNOWN_PROTOCOL_VAULTS
         }

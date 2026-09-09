@@ -59,8 +59,16 @@ def not_established(evidence: dict[str, Any]) -> list[str]:
         gaps.append("who issued this token")
 
     distribution = _dimension(evidence, "distribution")
-    if distribution.get("concentration_signals") and not distribution.get("owners_identified"):
-        gaps.append("who the largest holders are")
+    if distribution.get("concentration_signals"):
+        if not distribution.get("owners_identified"):
+            gaps.append("who the largest holders are")
+        else:
+            # Naming the holder answers who holds it, not who can move it. The
+            # vault is program-owned, and that program is upgradeable by a key
+            # we have not identified, so the question moves rather than closing.
+            gaps.append(
+                "who controls the program holding the identified concentration"
+            )
 
     creator = _dimension(evidence, "creator_history")
     if str(creator.get("status") or "").upper() in {"NOT_COLLECTED", "NOT_QUERIED", "FETCH_FAILED", "UNKNOWN"}:

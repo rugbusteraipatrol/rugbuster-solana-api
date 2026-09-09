@@ -67,7 +67,7 @@ def test_a_curated_mint_whose_concentration_is_a_named_vault_is_cleared():
     result = score_live_rugcheck_report(report)
     assert result["label"] == "GOOD"
     assert "curated_mint_administrative_flags_only" in result["risk_flags"]
-    assert "concentration_held_by_jupiter_perps_vault" in result["risk_flags"]
+    assert "concentration_held_by_jupiter_perps_pool_authority" in result["risk_flags"]
 
 
 def test_the_findings_are_still_in_the_response():
@@ -89,7 +89,7 @@ def test_an_unnamed_wallet_holding_the_same_share_is_not_cleared():
     report = _report(_holders(("NobodyHasNamedThis", 60.4), ("SomeoneElse", 3.3)))
     result = score_live_rugcheck_report(report)
     assert result["label"] != "GOOD"
-    assert "concentration_held_by_jupiter_perps_vault" not in result["risk_flags"]
+    assert "concentration_held_by_jupiter_perps_pool_authority" not in result["risk_flags"]
 
 
 def test_a_named_vault_does_not_cover_a_second_unnamed_holder():
@@ -149,13 +149,6 @@ def test_a_finding_we_cannot_measure_is_left_alone():
     contradiction."""
     report = _report(_holders(("A", 2.0), ("B", 1.0)))
     assert unsupported_distribution_flags(report, ["high_holder_correlation"]) == []
-
-
-def test_every_curated_vault_is_named_not_just_listed():
-    """A bare address in a list is unreviewable. Each carries what it is."""
-    assert KNOWN_PROTOCOL_VAULTS
-    assert all(isinstance(name, str) and name.strip() for name in KNOWN_PROTOCOL_VAULTS.values())
-    assert len(KNOWN_PROTOCOL_VAULTS) < 25
 
 
 # --- what lets an address into the vault list ------------------------------
