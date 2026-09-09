@@ -37,7 +37,7 @@ SCORING_FILE = REPO_ROOT / "scoring.py"
 # message after reviewing the diff, never from a passing run of an unreviewed
 # change.
 EXPECTED_VERSION = "2026.09.8"
-EXPECTED_FINGERPRINT = "bbd02ccdb2424b04"
+EXPECTED_FINGERPRINT = "3dcdad73814fab0b"
 
 
 def fingerprint_of(source: str) -> str:

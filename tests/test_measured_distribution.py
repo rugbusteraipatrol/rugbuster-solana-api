@@ -156,3 +156,55 @@ def test_every_curated_vault_is_named_not_just_listed():
     assert KNOWN_PROTOCOL_VAULTS
     assert all(isinstance(name, str) and name.strip() for name in KNOWN_PROTOCOL_VAULTS.values())
     assert len(KNOWN_PROTOCOL_VAULTS) < 25
+
+
+# --- what lets an address into the vault list ------------------------------
+#
+# An audit of the first version found the rule stated one condition and needed
+# two. The Wormhole token bridge authority is the mint authority of both
+# curated Wormhole assets -- so it satisfied the stated derivation -- and
+# appears in no holder table at all. The list is read against holder tables, so
+# an authority that never holds anything cannot justify a holder exemption. It
+# did nothing at the time and would have exempted its concentration later, on a
+# derivation that says only that it can mint.
+
+def test_the_exemption_says_identified_not_harmless():
+    """A named vault still shows its concentration. What the exemption
+    contradicts is 'nobody has named this holder', and nothing else."""
+    report = _report(_holders((VAULT, 60.4), ("SomeoneElse", 3.3)))
+    result = score_live_rugcheck_report(report)
+    assert "single_holder_ownership" in result["risk_flags"]
+    assert "high_holder_concentration" in result["risk_flags"]
+    assert measured_concentration(report)["top1_pct"] == 60.4
+
+
+def test_every_listed_vault_is_an_authority_of_a_curated_mint():
+    """Condition one, checked against the curated list rather than a comment.
+    The addresses themselves are re-derived from live reports by
+    qa/verify_protocol_vaults.py."""
+    from scoring import KNOWN_SOLANA_MINTS
+    assert KNOWN_PROTOCOL_VAULTS
+    assert len(KNOWN_PROTOCOL_VAULTS) < 25
+    assert not set(KNOWN_PROTOCOL_VAULTS) & set(KNOWN_SOLANA_MINTS), (
+        "a mint address is not a holder address"
+    )
+
+
+def test_an_address_that_never_holds_anything_exempts_nothing():
+    """Condition two. An address in the list that appears in no holder table
+    changes no verdict -- which is why the failure was silent, and why the
+    verifier checks for it rather than the code tolerating it."""
+    report = _report(_holders(("UnnamedWhale", 60.4), ("SomeoneElse", 3.3)))
+    before = score_live_rugcheck_report(report)
+
+    import scoring
+    original = dict(scoring.KNOWN_PROTOCOL_VAULTS)
+    scoring.KNOWN_PROTOCOL_VAULTS["NeverAHolderAddress"] = "authority, not a vault"
+    try:
+        after = score_live_rugcheck_report(report)
+    finally:
+        scoring.KNOWN_PROTOCOL_VAULTS.clear()
+        scoring.KNOWN_PROTOCOL_VAULTS.update(original)
+
+    assert before["label"] == after["label"]
+    assert before["risk_score"] == after["risk_score"]

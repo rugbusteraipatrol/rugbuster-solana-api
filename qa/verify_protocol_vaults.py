@@ -3,12 +3,21 @@
 
 A hand-maintained list of addresses is exactly the artifact that rots quietly:
 nothing fails when an entry stops being true, it just starts clearing something
-it should not. Each entry in KNOWN_PROTOCOL_VAULTS earns its place by being the
-mint or freeze authority of a mint already on KNOWN_SOLANA_MINTS, and this
-re-checks that against the chain rather than against the comment beside it.
+it should not. Two conditions, and an entry needs both:
 
-Exit code 1 if any entry can no longer be derived. Run it before trusting the
-list, and after any change to either list.
+  1. it is the mint or freeze authority of a mint already on
+     KNOWN_SOLANA_MINTS -- a derivation, not a claim typed in on its own;
+  2. it is observed holding one of those mints, because the list is read
+     against holder tables and an authority is not a holder.
+
+The second check was added after the first version of the list failed it. The
+Wormhole token bridge authority is the mint authority of both curated Wormhole
+assets and appears in no holder table at all, so listing it did nothing today
+and would have exempted its concentration later on a derivation that says only
+that it can mint.
+
+Exit code 1 if any entry fails either check. Run it before trusting the list
+and after any change to either list.
 """
 
 from __future__ import annotations
@@ -34,8 +43,10 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=30)
     args = parser.parse_args()
 
-    # Which authority addresses the curated mints actually name today.
+    # Which authority addresses the curated mints name, and which addresses
+    # are actually seen holding them.
     authorities: dict[str, list[str]] = {}
+    holdings: dict[str, list[str]] = {}
     for mint, symbol in KNOWN_SOLANA_MINTS.items():
         try:
             request = urllib.request.Request(
@@ -53,21 +64,35 @@ def main() -> int:
             address = token.get(field)
             if address:
                 authorities.setdefault(str(address), []).append(f"{symbol}.{field}")
+        for holder in report.get("topHolders") or []:
+            owner = str((holder or {}).get("owner") or "")
+            if owner:
+                share = holder.get("pct")
+                holdings.setdefault(owner, []).append(
+                    f"{symbol} {share:.1f}%" if isinstance(share, (int, float)) else symbol
+                )
         time.sleep(args.pause)
 
     unverified = []
     for address, name in KNOWN_PROTOCOL_VAULTS.items():
-        derived_from = authorities.get(address)
-        if derived_from:
-            print(f"OK  {name}: authority of {', '.join(sorted(derived_from))}")
-        else:
-            unverified.append((address, name))
+        derived_from = sorted(authorities.get(address) or [])
+        held = sorted(holdings.get(address) or [])
+        if derived_from and held:
+            print(f"OK  {name}")
+            print(f"      authority of: {', '.join(derived_from)}")
+            print(f"      holds:        {', '.join(held)}")
+            continue
+        unverified.append((address, name))
+        if not derived_from:
             print(f"!!  {name}: no curated mint names {address} as an authority")
+        if not held:
+            print(f"!!  {name}: never seen holding a curated mint -- an "
+                  f"authority is not a holder, and this list exempts holders")
 
     print(f"\n{len(KNOWN_PROTOCOL_VAULTS) - len(unverified)} of "
-          f"{len(KNOWN_PROTOCOL_VAULTS)} vault entries re-derived")
+          f"{len(KNOWN_PROTOCOL_VAULTS)} vault entries pass both checks")
     if unverified:
-        print("An entry that cannot be derived must be removed or given a "
+        print("An entry that fails either check must be removed or given a "
               "different, documented basis -- not left in on trust.")
     return 1 if unverified else 0
 

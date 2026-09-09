@@ -443,22 +443,39 @@ EVIDENCE_NEUTRAL_FLAGS = {
 IDENTIFIED_HOLDER_FLAG_PREFIX = "concentration_held_by_"
 
 
-# Holder addresses we can name, and the check that names them.
+# Holder addresses we can name, and the two checks that let one in.
 #
-# Curating a holder is the same act as curating a mint and carries the same
-# hazard, so nothing goes in here on a hunch. Each entry is derived from the
-# reports themselves: the address is the mint or freeze authority of a mint
-# already on KNOWN_SOLANA_MINTS, which makes it that protocol's own account
-# rather than a wallet nobody has identified. `qa/verify_protocol_vaults.py`
-# re-derives every entry from live reports and fails if one no longer holds.
+# The exemption this list grants is narrow and worth stating exactly: it says
+# the concentration is *identified*, not that it is harmless. A distribution
+# finding asserts that a large share sits with someone nobody has named. When
+# the holder is named, that particular assertion is contradicted. The share is
+# still reported, and still large.
+#
+# Two conditions, and an entry needs both:
+#
+#   1. It is the mint or freeze authority of a mint already on
+#      KNOWN_SOLANA_MINTS -- a derivation from something curated by hand, not
+#      a claim typed in on its own.
+#   2. It is actually observed holding one of those mints. The list is read
+#      against holder tables, so an address that only ever appears as an
+#      authority cannot justify a holder exemption.
+#
+# The second condition was added after the first version failed it. The
+# Wormhole token bridge authority (BCD75RNBHrJJpW4dXVagL5mPjzRLnVZq4YirJdjEYMV7)
+# is the mint authority of both curated Wormhole assets and appears in no
+# holder table at all. Listing it did nothing today and would have exempted its
+# concentration later on a derivation that says only that it can mint -- which
+# is not a statement about whose tokens it holds.
+#
+# `qa/verify_protocol_vaults.py` re-checks both conditions against live reports
+# and exits non-zero if either stops holding. A hand-kept address list
+# otherwise rots silently, clearing something it should not while nothing fails.
 KNOWN_PROTOCOL_VAULTS = {
-    # Mint and freeze authority of JLP (Jupiter Perps LP, curated). It holds
-    # the perps collateral, which is why it is also the largest holder of
-    # wrapped ETH and wrapped BTC on this chain.
+    # Mint and freeze authority of JLP (Jupiter Perps LP, curated), and holder
+    # of WETH 64.3%, WBTC 60.4% and JLP 28.0% as of 9 September 2026. It holds
+    # the perps collateral, which is why it is the largest holder of both
+    # curated wrapped assets on this chain.
     "AVzP2GeRmqGphJsMxWoqjpUifPpCret7LqWhD8NWQK49": "Jupiter Perps vault",
-    # Mint authority of both curated Wormhole assets, WETH and WBTC. It is the
-    # bridge's issuing authority, not a holder.
-    "BCD75RNBHrJJpW4dXVagL5mPjzRLnVZq4YirJdjEYMV7": "Wormhole token bridge",
 }
 
 # Concentration at or below these shares does not support the finding RugCheck
