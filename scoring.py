@@ -331,7 +331,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.7"
+SCORING_VERSION = "2026.09.8"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -435,12 +435,128 @@ EVIDENCE_NEUTRAL_FLAGS = {
     "rugcheck_returned_no_holder_or_liquidity_data",
     "too_few_holders_to_clear",
     "insufficient_liquidity_to_clear",
+    "distribution_findings_not_supported_by_holder_table",
 }
+
+# Annotations naming who holds a concentration. They record an identification,
+# not a finding, so they are excluded by prefix.
+IDENTIFIED_HOLDER_FLAG_PREFIX = "concentration_held_by_"
+
+
+# Holder addresses we can name, and the check that names them.
+#
+# Curating a holder is the same act as curating a mint and carries the same
+# hazard, so nothing goes in here on a hunch. Each entry is derived from the
+# reports themselves: the address is the mint or freeze authority of a mint
+# already on KNOWN_SOLANA_MINTS, which makes it that protocol's own account
+# rather than a wallet nobody has identified. `qa/verify_protocol_vaults.py`
+# re-derives every entry from live reports and fails if one no longer holds.
+KNOWN_PROTOCOL_VAULTS = {
+    # Mint and freeze authority of JLP (Jupiter Perps LP, curated). It holds
+    # the perps collateral, which is why it is also the largest holder of
+    # wrapped ETH and wrapped BTC on this chain.
+    "AVzP2GeRmqGphJsMxWoqjpUifPpCret7LqWhD8NWQK49": "Jupiter Perps vault",
+    # Mint authority of both curated Wormhole assets, WETH and WBTC. It is the
+    # bridge's issuing authority, not a holder.
+    "BCD75RNBHrJJpW4dXVagL5mPjzRLnVZq4YirJdjEYMV7": "Wormhole token bridge",
+}
+
+# Concentration at or below these shares does not support the finding RugCheck
+# raised. Deliberately generous: the point is to catch a claim the report's own
+# holder table contradicts, not to argue about where concentration begins.
+#
+# HNT is the worked example. RugCheck raised "Single holder ownership" on a
+# token whose largest holder holds 4.3% and whose top ten hold 26.8%, and we
+# repeated that claim in our own response because we read the name of the flag
+# and never the numbers sitting beside it in the same document.
+MEASURED_TOP1_CONCENTRATION_MAX = 25.0
+MEASURED_TOP10_CONCENTRATION_MAX = 50.0
+
+# Which measurement answers which claim. A flag with no measurement here (for
+# example holder correlation) is left alone: we cannot contradict what we
+# cannot measure.
+TOP1_DISTRIBUTION_ITEMS = {"single_holder_ownership", "high_ownership"}
+TOP10_DISTRIBUTION_ITEMS = {
+    "top_10_holders_high_ownership",
+    "high_holder_concentration",
+}
+
+
+def _top_holders(report: dict[str, Any]) -> list[dict[str, Any]]:
+    holders = report.get("topHolders")
+    return [h for h in holders if isinstance(h, dict)] if isinstance(holders, list) else []
+
+
+def measured_concentration(report: dict[str, Any]) -> dict[str, float | None]:
+    """What the report's own holder table says, rather than what it claims.
+
+    Returns None for a share the table cannot support -- an absent table is not
+    a well-distributed token, and must not be read as one.
+    """
+    holders = _top_holders(report)
+    if not holders:
+        return {"top1_pct": None, "top10_pct": None, "identified_pct": None}
+    shares = [_number(h.get("pct")) or 0.0 for h in holders]
+    identified = sum(
+        share for h, share in zip(holders, shares)
+        if str(h.get("owner") or "") in KNOWN_PROTOCOL_VAULTS
+    )
+    return {
+        "top1_pct": shares[0],
+        "top10_pct": sum(shares[:10]),
+        "identified_pct": identified,
+    }
+
+
+def unidentified_concentration(report: dict[str, Any]) -> dict[str, float | None]:
+    """Concentration left once named protocol accounts are set aside.
+
+    A vault holding a bridge's collateral is not a wallet holding the exit. It
+    is still disclosed; it is just no longer *unidentified*, which is the only
+    thing the distribution findings actually assert.
+    """
+    measured = measured_concentration(report)
+    if measured["top1_pct"] is None:
+        return measured
+    holders = _top_holders(report)
+    unnamed = [
+        _number(h.get("pct")) or 0.0 for h in holders
+        if str(h.get("owner") or "") not in KNOWN_PROTOCOL_VAULTS
+    ]
+    return {
+        "top1_pct": max(unnamed) if unnamed else 0.0,
+        "top10_pct": sum(unnamed[:10]),
+        "identified_pct": measured["identified_pct"],
+    }
+
+
+def unsupported_distribution_flags(report: dict[str, Any], flags: list[str]) -> list[str]:
+    """Distribution findings this report's own holder table does not support.
+
+    Two ways a finding fails: the concentration is not there at all, or it is
+    there and belongs to an account we can name. Either way the flag stays in
+    the response -- what changes is whether a verdict may rest on it.
+    """
+    measured = unidentified_concentration(report)
+    if measured["top1_pct"] is None:
+        return []
+
+    unsupported: list[str] = []
+    for flag in set(flags):
+        if flag in TOP1_DISTRIBUTION_ITEMS and measured["top1_pct"] <= MEASURED_TOP1_CONCENTRATION_MAX:
+            unsupported.append(flag)
+        elif flag in TOP10_DISTRIBUTION_ITEMS and measured["top10_pct"] <= MEASURED_TOP10_CONCENTRATION_MAX:
+            unsupported.append(flag)
+    return sorted(unsupported)
 
 
 def findings_only(flags: list[str]) -> list[str]:
     """The flags that assert something about the token."""
-    return [flag for flag in flags if flag not in EVIDENCE_NEUTRAL_FLAGS]
+    return [
+        flag for flag in flags
+        if flag not in EVIDENCE_NEUTRAL_FLAGS
+        and not flag.startswith(IDENTIFIED_HOLDER_FLAG_PREFIX)
+    ]
 
 
 def independent_serious_signals(flags: list[str]) -> list[str]:
@@ -517,6 +633,7 @@ def apply_verdict_ceilings(
     *,
     rugged: bool,
     curated: bool,
+    unsupported: tuple[str, ...] | list[str] = (),
 ) -> tuple[int, list[str]]:
     """The rules that decide how far a verdict may go, applied in one place.
 
@@ -526,15 +643,18 @@ def apply_verdict_ceilings(
     of the token.
     """
     flags = list(flags)
+    # A finding the evidence does not support is still reported, but a verdict
+    # may not rest on it.
+    judged = [flag for flag in findings_only(flags) if flag not in set(unsupported)]
 
-    if not rugged and curated and administrative_flags_only(findings_only(flags))             and risk > CURATED_ADMINISTRATIVE_RISK:
+    if not rugged and curated and administrative_flags_only(judged)             and risk > CURATED_ADMINISTRATIVE_RISK:
         risk = CURATED_ADMINISTRATIVE_RISK
         flags.append("curated_mint_administrative_flags_only")
 
     # Active authorities and concentrated ownership are material disclosures,
     # but without a stronger event or exploit signal they do not establish a
     # rug. Keep the token in WARN and preserve every underlying flag.
-    if not rugged and non_conclusive_flags_only(flags) and risk > MAX_NON_CONCLUSIVE_RISK:
+    if not rugged and non_conclusive_flags_only(judged) and risk > MAX_NON_CONCLUSIVE_RISK:
         risk = MAX_NON_CONCLUSIVE_RISK
         flags.append("non_conclusive_signals_capped_at_warn")
 
@@ -657,8 +777,23 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
     # in `apply_verdict_ceilings`, which the stored path calls too. Every flag
     # stays in the response either way: suppression means "these powers are
     # expected for this issuer", never "these powers are absent".
+    # Read the holder table before judging the findings drawn from it. A
+    # distribution finding the table contradicts, or one whose concentration
+    # sits in an account we can name, is reported and not acted on.
+    unsupported = unsupported_distribution_flags(report, flags)
+    if unsupported:
+        flags.append("distribution_findings_not_supported_by_holder_table")
+        named = {
+            KNOWN_PROTOCOL_VAULTS[str(holder.get("owner"))]
+            for holder in _top_holders(report)
+            if str(holder.get("owner") or "") in KNOWN_PROTOCOL_VAULTS
+        }
+        for vault in sorted(named):
+            flags.append(f"concentration_held_by_{_snake_case(vault)}")
+
     risk, flags = apply_verdict_ceilings(
-        _clamp(risk), flags, rugged=rugged, curated=is_curated_canonical_mint(report)
+        _clamp(risk), flags, rugged=rugged,
+        curated=is_curated_canonical_mint(report), unsupported=unsupported,
     )
 
     if rugged:
