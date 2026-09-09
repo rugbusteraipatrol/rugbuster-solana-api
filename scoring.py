@@ -291,7 +291,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.5"
+SCORING_VERSION = "2026.09.6"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -306,8 +306,14 @@ KNOWN_SOLANA_MINTS = {
     "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263": "BONK",
     "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN": "JUP",
     "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So": "mSOL",
-    "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": "ETH (Wormhole)",
-    "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh": "WBTC (Wormhole)",
+    "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": "WETH",
+    "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh": "WBTC",
+    # Source-backed canonical mints: PayPal developer docs, Raydium docs,
+    # Jito Foundation deployed-program docs, and jup-ag token categories.
+    "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo": "PYUSD",
+    "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R": "RAY",
+    "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn": "JITOSOL",
+    "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4": "JLP",
 }
 
 # Below these, the token has essentially no economic life: the 17 on-chain
@@ -342,6 +348,21 @@ ADMINISTRATIVE_RISK_ITEMS = {
     "mutable_metadata",
     "missing_file_metadata",
 }
+
+# These findings can justify review, but do not by themselves establish a rug.
+# They stay visible in the response and can keep a token out of GOOD. DANGER is
+# reserved for a stronger signal or a combination outside this set.
+DISTRIBUTION_RISK_ITEMS = {
+    "high_holder_concentration",
+    "high_holder_correlation",
+    "high_market_cap_per_holder",
+    "high_ownership",
+    "low_amount_of_lp_providers",
+    "single_holder_ownership",
+    "top_10_holders_high_ownership",
+}
+NON_CONCLUSIVE_RISK_ITEMS = ADMINISTRATIVE_RISK_ITEMS | DISTRIBUTION_RISK_ITEMS
+MAX_NON_CONCLUSIVE_RISK = 69
 
 # Concentration is deliberately NOT in that set. The first version of this
 # change included it, on the reasoning that across three quarters of a million
@@ -387,6 +408,27 @@ def administrative_flags_only(risk_items: list[str]) -> bool:
     absence-of-evidence case `live_report_supports_clean_verdict` handles.
     """
     return all(item in ADMINISTRATIVE_RISK_ITEMS for item in risk_items)
+
+
+def non_conclusive_flags_only(risk_items: list[str]) -> bool:
+    """Whether every finding is a control or distribution disclosure."""
+    return bool(risk_items) and all(item in NON_CONCLUSIVE_RISK_ITEMS for item in risk_items)
+
+
+def canonical_symbol_mint_mismatch(report: dict[str, Any]) -> bool:
+    """A protected symbol was supplied with a different mint.
+
+    This establishes an address mismatch, not malicious intent. It is still a
+    high transaction-safety risk because the address is not the curated asset a
+    user could reasonably believe the symbol identifies.
+    """
+    token = report.get("token") if isinstance(report.get("token"), dict) else {}
+    token_meta = report.get("tokenMeta") if isinstance(report.get("tokenMeta"), dict) else {}
+    symbol = str(token_meta.get("symbol") or token.get("symbol") or "").strip().upper()
+    mint = str(report.get("mint") or report.get("address") or "").strip()
+    expected = {known_mint for known_mint, known_symbol in KNOWN_SOLANA_MINTS.items()
+                if known_symbol.upper() == symbol}
+    return bool(symbol and expected and mint not in expected)
 
 
 def live_report_supports_clean_verdict(report: dict[str, Any]) -> tuple[bool, str]:
@@ -471,6 +513,10 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
 
     rugged = report.get("rugged") is True
 
+    if canonical_symbol_mint_mismatch(report):
+        risk = max(risk, 70)
+        flags.append("symbol_matches_curated_asset_but_mint_differs")
+
     # RugCheck's normalised score is inherited wholesale above. For curated
     # assets, that score can be dominated by administrative powers which are
     # expected for the identified issuer. The powers remain relevant facts,
@@ -492,6 +538,13 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
     ):
         risk = CURATED_ADMINISTRATIVE_RISK
         flags.append("curated_mint_administrative_flags_only")
+
+    # Active authorities and concentrated ownership are material disclosures,
+    # but without a stronger event or exploit signal they do not establish a
+    # rug. Keep the token in WARN and preserve every underlying flag.
+    if not rugged and non_conclusive_flags_only(flags) and risk > MAX_NON_CONCLUSIVE_RISK:
+        risk = MAX_NON_CONCLUSIVE_RISK
+        flags.append("non_conclusive_signals_capped_at_warn")
 
     if rugged:
         risk = 98

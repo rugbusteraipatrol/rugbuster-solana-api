@@ -1,0 +1,801 @@
+{
+  "scoring_version": "2026.09.6",
+  "input": "C:\\Users\\ffurd\\Dropbox\\RugBuster Growth\\tmp\\solana-freshness-review-20260908\\qa\\alive_token_rescore_2026-09-08.json",
+  "sample_semantics": "Active-token regression sample; not independently adjudicated ground truth and not an accuracy or false-positive estimate.",
+  "counts": {
+    "DANGER": 6,
+    "GOOD": 20,
+    "WARN": 29
+  },
+  "results": [
+    {
+      "symbol": "IOTA",
+      "mint": "3pKgFFJ5Yyhs9X9asYsPVBwtBx1bgwZBvS4YNLkWdkhM",
+      "previous_label": "WARN",
+      "previous_score": 62,
+      "label": "WARN",
+      "risk_score": 62,
+      "risk_flags": [
+        "high_market_cap_per_holder",
+        "large_amount_of_lp_unlocked",
+        "low_amount_of_lp_providers",
+        "low_liquidity"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "PUMP",
+      "mint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "TRUMP",
+      "mint": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+      "previous_label": "WARN",
+      "previous_score": 58,
+      "label": "WARN",
+      "risk_score": 58,
+      "risk_flags": [
+        "high_ownership",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "PYUSD",
+      "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+      "previous_label": "WARN",
+      "previous_score": 55,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [
+        "known_canonical_solana_mint"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "MELANIA",
+      "mint": "FUAfBo2jgks6gB4Z4LfZkqSZgzNucisEHqnNebaRxM1P",
+      "previous_label": "WARN",
+      "previous_score": 64,
+      "label": "WARN",
+      "risk_score": 64,
+      "risk_flags": [
+        "high_ownership",
+        "mutable_metadata",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "MEW",
+      "mint": "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 40,
+      "risk_flags": [
+        "high_holder_concentration",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "Fartcoin ",
+      "mint": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "JitoSOL",
+      "mint": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "GOOD",
+      "risk_score": 20,
+      "risk_flags": [
+        "curated_mint_administrative_flags_only",
+        "known_canonical_solana_mint",
+        "mint_authority_still_enabled",
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "WETH",
+      "mint": "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "known_canonical_solana_mint",
+        "mint_authority_still_enabled",
+        "missing_file_metadata",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "RAY",
+      "mint": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 56,
+      "risk_flags": [
+        "known_canonical_solana_mint",
+        "missing_file_metadata",
+        "mutable_metadata",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "POPCAT",
+      "mint": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "PENGU",
+      "mint": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "SOLO",
+      "mint": "SoLo9oxzLDpcq1dpqAgMwgce5WqkRDtNXK7EPnbmeta",
+      "previous_label": "DANGER",
+      "previous_score": 89,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "MOODENG",
+      "mint": "ED5nyyWEzpPPiWimP8vYm7sD7TD3LAt3Q3gRTWHzPJBY",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "GOOD",
+      "risk_score": 22,
+      "risk_flags": [
+        "high_holder_concentration"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "BP",
+      "mint": "BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy",
+      "previous_label": "DANGER",
+      "previous_score": 100,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "freeze_authority_active",
+        "freeze_authority_still_enabled",
+        "high_market_cap_per_holder",
+        "high_ownership",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "USELESS",
+      "mint": "Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "mSOL",
+      "mint": "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "GOOD",
+      "risk_score": 20,
+      "risk_flags": [
+        "curated_mint_administrative_flags_only",
+        "known_canonical_solana_mint",
+        "mint_authority_still_enabled",
+        "missing_file_metadata",
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "GOAT",
+      "mint": "CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "KMNO",
+      "mint": "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 40,
+      "risk_flags": [
+        "high_holder_concentration",
+        "mutable_metadata",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "JLP",
+      "mint": "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "freeze_authority_still_enabled",
+        "known_canonical_solana_mint",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "USDS",
+      "mint": "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA",
+      "previous_label": "WARN",
+      "previous_score": 55,
+      "label": "WARN",
+      "risk_score": 55,
+      "risk_flags": [
+        "freeze_authority_active",
+        "mint_authority_active",
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "JTO",
+      "mint": "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 35,
+      "risk_flags": [
+        "mutable_metadata",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "WBTC",
+      "mint": "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "high_holder_concentration",
+        "known_canonical_solana_mint",
+        "mint_authority_still_enabled",
+        "missing_file_metadata",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "SKR",
+      "mint": "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3",
+      "previous_label": "DANGER",
+      "previous_score": 88,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "high_holder_concentration",
+        "high_holder_correlation",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "bSOL",
+      "mint": "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1",
+      "previous_label": "WARN",
+      "previous_score": 50,
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "mint_authority_active",
+        "rugcheck_returned_no_holder_or_liquidity_data"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "ORCA",
+      "mint": "orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "high_holder_concentration",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "missing_file_metadata",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "LIT",
+      "mint": "EicWvteVi2fWepEzS3FYWsnuPoP6caZfjnKqNvydLjCH",
+      "previous_label": "DANGER",
+      "previous_score": 89,
+      "label": "DANGER",
+      "risk_score": 89,
+      "risk_flags": [
+        "large_amount_of_lp_unlocked",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "NEAR",
+      "mint": "3ZLekZYq2qkZiSpnSvabjit34tUkjSwD1JFuW9as9wBG",
+      "previous_label": "DANGER",
+      "previous_score": 87,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "ME",
+      "mint": "MEFNBXixkEbait3xn9bkm8WsJzXtVsaJEn4c8Sam21u",
+      "previous_label": "WARN",
+      "previous_score": 55,
+      "label": "WARN",
+      "risk_score": 55,
+      "risk_flags": [
+        "mutable_metadata",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "NOS",
+      "mint": "nosXBVoaCTtYdLvKY6Csb4AC8JCdQKKAaWYtx2ZMoo7",
+      "previous_label": "GOOD",
+      "previous_score": 16,
+      "label": "GOOD",
+      "risk_score": 16,
+      "risk_flags": [
+        "missing_file_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "SPX",
+      "mint": "J3NKxxXZcnNiMjKw9hYb2K4LUxgwB6t1FtPtQVsv3KFr",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "missing_file_metadata",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "GP",
+      "mint": "31k88G5Mq7ptbRDf3AM13HAq6wRQHXHikR8hik7wPygk",
+      "previous_label": "GOOD",
+      "previous_score": 28,
+      "label": "GOOD",
+      "risk_score": 27,
+      "risk_flags": [
+        "high_holder_concentration",
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "WBTC",
+      "mint": "5XZw2LKTyrfvfiskJ78AMpackRjPcyCif1WhUsPDuVqQ",
+      "previous_label": "DANGER",
+      "previous_score": 100,
+      "label": "DANGER",
+      "risk_score": 100,
+      "risk_flags": [
+        "freeze_authority_active",
+        "freeze_authority_still_enabled",
+        "high_ownership",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "single_holder_ownership",
+        "symbol_matches_curated_asset_but_mint_differs",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "HNT",
+      "mint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
+      "previous_label": "DANGER",
+      "previous_score": 86,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "CLOUD",
+      "mint": "CLoUDKc4Ane7HeQcPpE3YHnznRxhMimJ4MyaUqyHFzAu",
+      "previous_label": "WARN",
+      "previous_score": 56,
+      "label": "WARN",
+      "risk_score": 56,
+      "risk_flags": [
+        "mutable_metadata",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "PYTH",
+      "mint": "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
+      "previous_label": "GOOD",
+      "previous_score": 12,
+      "label": "GOOD",
+      "risk_score": 12,
+      "risk_flags": [
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "PYUSD ",
+      "mint": "DuXfm3HPvY5i2VP4nujH5HYRE28EVwwuPm8D63Ahzwya",
+      "previous_label": "DANGER",
+      "previous_score": 85,
+      "label": "DANGER",
+      "risk_score": 85,
+      "risk_flags": [
+        "freeze_authority_active",
+        "freeze_authority_still_enabled",
+        "high_market_cap_per_holder",
+        "high_ownership",
+        "large_amount_of_lp_unlocked",
+        "low_amount_of_lp_providers",
+        "single_holder_ownership",
+        "symbol_matches_curated_asset_but_mint_differs",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "Bonk",
+      "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "previous_label": "GOOD",
+      "previous_score": 7,
+      "label": "GOOD",
+      "risk_score": 7,
+      "risk_flags": [
+        "known_canonical_solana_mint",
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "RENDER",
+      "mint": "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",
+      "previous_label": "DANGER",
+      "previous_score": 100,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "freeze_authority_active",
+        "freeze_authority_still_enabled",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "JupSOL",
+      "mint": "jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v",
+      "previous_label": "GOOD",
+      "previous_score": 20,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "MLG",
+      "mint": "7XJiwLDrjzxDYdZipnJXzpr1iDTmK55XixSFAa7JgNEL",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "OPENAI",
+      "mint": "PreweJYECqtQwBtpxHL171nL2K6umo692gTm7Q3rpgF",
+      "previous_label": "DANGER",
+      "previous_score": 100,
+      "label": "DANGER",
+      "risk_score": 100,
+      "risk_flags": [
+        "fee_config_enabled",
+        "freeze_authority_active",
+        "freeze_authority_still_enabled",
+        "high_holder_concentration",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "permanent_control_enabled"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "ZBCN",
+      "mint": "ZBCNpuD7YMXzTHB2fhGkGi78MNsHGLRXUhRewNRm9RU",
+      "previous_label": "WARN",
+      "previous_score": 40,
+      "label": "WARN",
+      "risk_score": 40,
+      "risk_flags": [
+        "high_holder_concentration",
+        "mutable_metadata",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "ORE",
+      "mint": "oreoU2P8bN6jkk3jbaiVxYnG1dCXcYxwhwyK9jSybcp",
+      "previous_label": "DANGER",
+      "previous_score": 87,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "high_holder_concentration",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "three",
+      "mint": "FeMbDoX7R1Psc4GEcvJdsbNbZA3bfztcyDCatJVJpump",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "$WIF",
+      "mint": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "DOOD",
+      "mint": "DvjbEsdca43oQcw2h3HW1CT7N3x5vRcr3QrvTUHnXvgV",
+      "previous_label": "WARN",
+      "previous_score": 55,
+      "label": "WARN",
+      "risk_score": 41,
+      "risk_flags": [
+        "high_holder_concentration",
+        "mutable_metadata",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "ANTHROPIC",
+      "mint": "Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw",
+      "previous_label": "DANGER",
+      "previous_score": 100,
+      "label": "DANGER",
+      "risk_score": 100,
+      "risk_flags": [
+        "fee_config_enabled",
+        "freeze_authority_active",
+        "freeze_authority_still_enabled",
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "permanent_control_enabled"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "GHOST",
+      "mint": "BBKPiLM9KjdJW7oQSKt99RVWcZdhF6sEHRKnwqeBGHST",
+      "previous_label": "GOOD",
+      "previous_score": 1,
+      "label": "GOOD",
+      "risk_score": 1,
+      "risk_flags": [],
+      "error": null
+    },
+    {
+      "symbol": "xSOL",
+      "mint": "4sWNB8zGWHkh6UnmwiEtzNxL4XrN7uK9tosbESbJFfVs",
+      "previous_label": "DANGER",
+      "previous_score": 86,
+      "label": "DANGER",
+      "risk_score": 86,
+      "risk_flags": [
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "name_mismatch"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "SAMO",
+      "mint": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "previous_label": "GOOD",
+      "previous_score": 22,
+      "label": "GOOD",
+      "risk_score": 22,
+      "risk_flags": [
+        "missing_file_metadata",
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "MET",
+      "mint": "METvsvVRapdj9cFLzq4Tr43xK4tAjQfwX76z3n6mWQL",
+      "previous_label": "GOOD",
+      "previous_score": 12,
+      "label": "GOOD",
+      "risk_score": 12,
+      "risk_flags": [
+        "mutable_metadata"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "TNSR",
+      "mint": "TNSRxcUxoT9xBG3de7PiJyTDYu7kskLqcpddxnEJAS6",
+      "previous_label": "DANGER",
+      "previous_score": 88,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn",
+        "single_holder_ownership",
+        "top_10_holders_high_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "IO",
+      "mint": "BZLbGTNCSFfoth2GYDtwr7e4imWzpR5jqcUuGEwr646K",
+      "previous_label": "WARN",
+      "previous_score": 42,
+      "label": "WARN",
+      "risk_score": 42,
+      "risk_flags": [
+        "high_holder_concentration",
+        "mutable_metadata",
+        "single_holder_ownership"
+      ],
+      "error": null
+    },
+    {
+      "symbol": "ai16z",
+      "mint": "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC",
+      "previous_label": "DANGER",
+      "previous_score": 86,
+      "label": "WARN",
+      "risk_score": 69,
+      "risk_flags": [
+        "mint_authority_active",
+        "mint_authority_still_enabled",
+        "mutable_metadata",
+        "non_conclusive_signals_capped_at_warn"
+      ],
+      "error": null
+    }
+  ]
+}

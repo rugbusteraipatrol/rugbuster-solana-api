@@ -1,9 +1,4 @@
-"""An administrative flag is a disclosure. It is not a rug verdict.
-
-Measured on 55 independently-sourced, demonstrably-traded Solana tokens, the
-live path called 42% of them DANGER: JitoSOL 86, Jupiter's own JLP 100,
-canonical WETH 74 -- while passing the memecoins, because a pump.fun launch
-revokes exactly the authorities those tokens legitimately keep.
+"""Administrative and distribution flags are disclosures, not rug proof.
 
 The first version of this change gated the suppression on holder count and
 liquidity, and folded concentrated ownership in with the administrative flags.
@@ -26,7 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scoring import (
     KNOWN_SOLANA_MINTS,
     administrative_flags_only,
+    canonical_symbol_mint_mismatch,
     is_curated_canonical_mint,
+    non_conclusive_flags_only,
     score_live_rugcheck_report,
 )
 
@@ -71,6 +68,7 @@ def test_the_reviewed_counterexample_is_no_longer_cleared():
     result = score_live_rugcheck_report(unverified)
     assert result["label"] != "GOOD"
     assert "curated_mint_administrative_flags_only" not in result["risk_flags"]
+    assert result["label"] == "WARN"
 
 
 def test_scale_alone_never_clears_a_token():
@@ -81,13 +79,13 @@ def test_scale_alone_never_clears_a_token():
     assert score_live_rugcheck_report(huge)["label"] != "GOOD"
 
 
-def test_concentration_is_not_administrative_even_on_a_curated_mint():
+def test_concentration_is_warn_not_good_or_danger_on_a_curated_mint():
     """Identity explains an authority. It cannot explain away ownership nobody
     has identified."""
     report = _report(risks=_report()["risks"] + [{"name": "Single holder ownership"}])
     result = score_live_rugcheck_report(report)
     assert "curated_mint_administrative_flags_only" not in result["risk_flags"]
-    assert result["label"] != "GOOD"
+    assert result["label"] == "WARN"
 
 
 # --- the false alarms this was written to fix ------------------------------
@@ -121,8 +119,10 @@ def test_a_non_administrative_risk_keeps_the_original_verdict():
     assert score_live_rugcheck_report(report)["label"] == "DANGER"
 
 
-def test_an_uncurated_mint_with_the_same_flags_is_untouched():
-    assert score_live_rugcheck_report(_report(mint="NotOnTheList"))["label"] == "DANGER"
+def test_an_uncurated_mint_with_only_admin_flags_is_warn():
+    result = score_live_rugcheck_report(_report(mint="NotOnTheList", tokenMeta={"symbol": "NEW"}))
+    assert result["label"] == "WARN"
+    assert "non_conclusive_signals_capped_at_warn" in result["risk_flags"]
 
 
 def test_curation_is_by_mint_not_by_symbol():
@@ -130,6 +130,14 @@ def test_curation_is_by_mint_not_by_symbol():
     impostor = _report(mint="FakeMintSameName")
     assert is_curated_canonical_mint(impostor) is False
     assert score_live_rugcheck_report(impostor)["label"] == "DANGER"
+
+
+def test_protected_symbol_with_a_different_mint_requires_review():
+    impostor = _report(mint="FakeMsolMint")
+    result = score_live_rugcheck_report(impostor)
+    assert canonical_symbol_mint_mismatch(impostor) is True
+    assert result["label"] == "DANGER"
+    assert "symbol_matches_curated_asset_but_mint_differs" in result["risk_flags"]
 
 
 def test_the_curated_list_is_hand_written_and_small():
@@ -146,6 +154,16 @@ def test_administrative_only_rejects_an_economic_risk():
 
 def test_administrative_only_rejects_concentration():
     assert not administrative_flags_only(["mint_authority_still_enabled", "single_holder_ownership"])
+
+
+def test_admin_plus_concentration_is_non_conclusive():
+    assert non_conclusive_flags_only([
+        "mint_authority_still_enabled", "single_holder_ownership"
+    ])
+
+
+def test_low_liquidity_is_not_non_conclusive():
+    assert not non_conclusive_flags_only(["mint_authority_still_enabled", "low_liquidity"])
 
 
 def test_curation_ignores_holders_and_liquidity():
