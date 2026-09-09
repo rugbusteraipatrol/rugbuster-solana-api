@@ -176,3 +176,83 @@ def test_the_rule_only_lowers_a_score_and_never_raises_one():
     result = score_live_rugcheck_report(_report(score_normalised=3, risks=[]))
     assert result["risk_score"] < 20
     assert "curated_mint_administrative_flags_only" not in result["risk_flags"]
+
+
+# --- what the new rules reach, stated so it cannot drift silently ----------
+#
+# Two rules landed together and both move a verdict on evidence that is weaker
+# than the verdict sounds. Neither is asserted to be wrong here; they are
+# pinned so that a later reader sees the reach and can argue with it.
+
+def test_a_clean_token_sharing_a_curated_symbol_is_danger_on_that_fact_alone():
+    """Solana tickers are not unique. A mint with no findings at all, no
+    authorities, deep liquidity and a symbol that collides with a curated
+    asset is called DANGER on the collision alone.
+
+    The rule's own docstring says this establishes an address mismatch and not
+    malicious intent -- DANGER is the strongest label we have, so the verdict
+    says more than the evidence does. Recorded for review, not endorsed."""
+    collision = {
+        "mint": "SomeOtherLegitimateMint",
+        "score": 100,
+        "score_normalised": 2,
+        "totalHolders": 200_000,
+        "totalMarketLiquidity": 20_000_000,
+        "rugged": False,
+        "token": {"mintAuthority": None, "freezeAuthority": None},
+        "tokenMeta": {"symbol": "RAY", "name": "Unrelated project", "mutable": False},
+        "risks": [],
+    }
+    result = score_live_rugcheck_report(collision)
+    assert result["label"] == "DANGER"
+    assert result["risk_flags"] == ["symbol_matches_curated_asset_but_mint_differs"]
+
+
+def test_the_cap_does_not_reach_a_token_whose_symbol_collides():
+    """The mismatch flag is outside the non-conclusive set, so a collision is
+    not capped back down to WARN by the rule below it."""
+    collision = {
+        "mint": "AnotherMint", "score": 50000, "score_normalised": 95,
+        "totalHolders": 40_000, "totalMarketLiquidity": 5_000_000, "rugged": False,
+        "token": {"mintAuthority": "A", "freezeAuthority": "B"},
+        "tokenMeta": {"symbol": "JLP", "name": "Not the real one", "mutable": True},
+        "risks": [{"name": "Single holder ownership"}],
+    }
+    result = score_live_rugcheck_report(collision)
+    assert result["label"] == "DANGER"
+    assert "non_conclusive_signals_capped_at_warn" not in result["risk_flags"]
+
+
+def test_a_token_with_no_symbol_is_outside_the_mismatch_rule():
+    """The rule reads the reported symbol. A report that carries none cannot
+    collide, so omitting the symbol is a way around it."""
+    anonymous = {
+        "mint": "NoSymbolMint", "score": 100, "score_normalised": 2,
+        "totalHolders": 200_000, "totalMarketLiquidity": 20_000_000, "rugged": False,
+        "token": {"mintAuthority": None, "freezeAuthority": None},
+        "tokenMeta": {"name": "No symbol", "mutable": False}, "risks": [],
+    }
+    assert canonical_symbol_mint_mismatch(anonymous) is False
+
+
+def test_the_cap_makes_the_live_path_disagree_with_the_stored_path():
+    """Same evidence, two answers.
+
+    The cap was added to `score_live_rugcheck_report` only. A stored row for
+    the same token still yields DANGER, so which answer a caller receives now
+    depends on whether the row was cached, not on the token."""
+    from scoring import score_scan_row
+
+    live_report = {
+        "mint": "DivergentMint", "score": 50000, "score_normalised": 95,
+        "totalHolders": 40_000, "totalMarketLiquidity": 5_000_000, "rugged": False,
+        "token": {"mintAuthority": "A", "freezeAuthority": "B"},
+        "tokenMeta": {"symbol": "NEWCOIN", "name": "New", "mutable": True},
+        "risks": [{"name": "Single holder ownership"},
+                  {"name": "Top 10 holders high ownership"}],
+    }
+    live = score_live_rugcheck_report(live_report)
+    stored = score_scan_row({"mint": "DivergentMint", "risk_percent": 95, "label": "DANGER"})
+
+    assert live["label"] == "WARN"
+    assert stored["label"] == "DANGER"

@@ -1,0 +1,214 @@
+{
+  "scoring_version": "2026.09.6",
+  "semantics": "On-chain confirmed rugs. GOOD on any of these is a scoring failure. WARN is a refusal to clear, not a detection.",
+  "counts": {
+    "DANGER": 1,
+    "WARN": 16
+  },
+  "cleared_as_good": [],
+  "results": [
+    {
+      "mint": "23dxgqAtivdW9cZz7UDFAGXUtByz5sXhKRDENdbXpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "3FpBvhnAJAxjH25WqpYfoUuuB7Dy1UT72Aax4Na5pump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "3TByinjHpnNVZsH2miX9DwgTFB7JPm65yzDN2gSqpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "3ZuZXv2g3TZofEogzM9rwEbVB5i1NwL8TqNCWH2jpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "3n1Zy2pjN1WmKirKP31xvdZNC5QGEtisZpCP8taDpump",
+      "label": "DANGER",
+      "risk_score": 80,
+      "risk_flags": [
+        "creator_history_of_rugged_tokens"
+      ],
+      "upstream_score": 80,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "6ML7tXmHEyESa2Rtj9FzqvQVA5DhsjPh4wpAvGgLpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "6vpuYc1JzwsHvdf7gHQDby6o45mqsLe9QsJ5uDzgpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "74nxamVTxGkqH2P4UCK6qmfBRcTGyKRAUnsDtBKEpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "7p7ZMhihbDEoRmjTrriUMpM6jHE1jBhjXFG6iztPpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "AShmQtSBCXX7ygHs9kv1Gkrfw5dqkfAidc9hZpowpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "AyerU4udx5PF6ueZne2GuhgLDkqqQLuxzVPbS5sppump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "BiHqVnZibFk3po2JpTWnpeDy1ryTceQ88x1HM5TEpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "CHMfiUmZvKwLdjo3nfZHQHp3RrbCBMAuRkkqnGPnpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "CXRhJrBcCk1m83soxiGjY1AwiY6awAxhua6zPZMqpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "ETWVkgQHsqnDWTmYg3hkhEPSfN49K7S42BhGPVZXpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "HEoAb66vM87StCj3xyzDSCwVfPgx9ffp2yz1zqkgpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    },
+    {
+      "mint": "HoBvJJQxb9Dq2P2sePRkLEzAeZxvmG5QqKumy1PHpump",
+      "label": "WARN",
+      "risk_score": 50,
+      "risk_flags": [
+        "live_scan_cannot_clear_token",
+        "too_few_holders_to_clear"
+      ],
+      "upstream_score": 1,
+      "upstream_rugged": false,
+      "error": null
+    }
+  ]
+}
