@@ -14,6 +14,7 @@ from psycopg2.extras import Json, RealDictCursor
 
 from build_identity import build_identity
 from evidence import build_evidence
+from plain_language import describe
 from freshness import (
     LIVE_CACHE_MAX_AGE,
     assess,
@@ -241,6 +242,10 @@ def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None)
     enriched.update(build_identity(SCORING_VERSION))
     if "label" in enriched:
         enriched["evidence"] = build_evidence(enriched, report)
+        # A reader who stops at the top of the response should still be told
+        # which kind of answer this is: something found, or something we could
+        # not check. Restates the evidence block; never changes it.
+        enriched.update(describe(enriched))
     return enriched
 
 
@@ -460,6 +465,7 @@ def score():
             }
         )
         result["evidence"] = build_evidence(result, report)
+        result.update(describe(result))
         return jsonify(result)
 
     # A stored risk_percent was produced by whichever rules wrote the row, and

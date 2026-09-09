@@ -47,6 +47,8 @@ AUTHORITY_FLAGS = {
 # Flags about how supply is distributed. Kept apart from authorities because
 # they answer a different question and, crucially, because "concentrated" is
 # not made harmless by a recognised issuer.
+IDENTIFIED_HOLDER_PREFIX = "concentration_held_by_"
+
 DISTRIBUTION_FLAGS = {
     "single_holder_ownership",
     "top_10_holders_high_ownership",
@@ -172,12 +174,25 @@ def distribution(payload: dict[str, Any], report: dict[str, Any] | None = None) 
     signals = sorted(flag for flag in flags if flag in DISTRIBUTION_FLAGS)
     holders = (report or {}).get("totalHolders")
 
+    # Scoring names a concentrated holder only when the address is derivable
+    # from an already-curated mint's authority. That derivation is the only
+    # thing that turns "unidentified" into "identified" here; a large holder
+    # count still does not.
+    identified = sorted(
+        flag[len(IDENTIFIED_HOLDER_PREFIX):]
+        for flag in flags if flag.startswith(IDENTIFIED_HOLDER_PREFIX)
+    )
+
     return {
         "status": OK if signals or holders is not None else UNKNOWN,
         "concentration_signals": signals,
         "total_holders": holders,
-        "owners_identified": False,
+        "owners_identified": bool(identified),
+        "identified_holders": identified,
         "note": (
+            "Concentration held by: " + ", ".join(identified) + ". Each was "
+            "derived from a curated mint's own authority, not assumed from size."
+            if identified else
             "Who the concentrated holders are has not been established. A high "
             "holder count does not make concentration benign."
         ),
