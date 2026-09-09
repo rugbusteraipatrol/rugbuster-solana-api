@@ -40,6 +40,32 @@ SYSTEM_PROGRAM = "11111111111111111111111111111111"
 UPGRADEABLE_LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
 
 
+_ED25519_P = 2**255 - 19
+_ED25519_D = (-121665 * pow(121666, _ED25519_P - 2, _ED25519_P)) % _ED25519_P
+_B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+
+def _on_ed25519_curve(address: str) -> bool:
+    """Whether a keypair can exist for this address.
+
+    An off-curve address is a program-derived one: no private key is possible.
+    Account ownership does not answer this and I once used it as though it did.
+    """
+    number = 0
+    for character in address:
+        number = number * 58 + _B58.index(character)
+    raw = number.to_bytes(32, "big")
+    y = int.from_bytes(raw, "little") & ((1 << 255) - 1)
+    if y >= _ED25519_P:
+        return False
+    p, d = _ED25519_P, _ED25519_D
+    y2 = y * y % p
+    u, v = (y2 - 1) % p, (d * y2 + 1) % p
+    x = (u * pow(v, 3, p) % p) * pow(u * pow(v, 7, p) % p, (p - 5) // 8, p) % p
+    vxx = v * x * x % p
+    return vxx == u or vxx == (-u) % p
+
+
 def _rpc(method: str, params: list) -> dict:
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
     request = urllib.request.Request(
@@ -72,6 +98,12 @@ def check_role_and_control(address: str) -> dict:
         "program_upgrade_authority": None,
         "program_upgrade_authority_is_single_key": None,
     }
+    # Ownership is not the same question as whether a keypair exists. An
+    # off-curve address has no valid ed25519 public key, so none can. Reading
+    # only the owner field made me report this vault's upgrade authority as "a
+    # single private key" when it is off-curve and therefore a PDA.
+    result["is_off_curve"] = not _on_ed25519_curve(address)
+    result["has_private_key"] = result["is_off_curve"] is False and owner == SYSTEM_PROGRAM
     if not owner or result["has_private_key"]:
         return result
 
@@ -88,7 +120,7 @@ def check_role_and_control(address: str) -> dict:
     if authority:
         holder = _rpc("getAccountInfo", [authority, {"encoding": "jsonParsed"}]).get("value") or {}
         result["program_upgrade_authority_is_single_key"] = (
-            str(holder.get("owner") or "") == SYSTEM_PROGRAM
+            _on_ed25519_curve(authority) and str(holder.get("owner") or "") == SYSTEM_PROGRAM
         )
     return result
 
@@ -149,7 +181,7 @@ def main() -> int:
             authority = control["program_upgrade_authority"]
             if authority:
                 shape = ("a single key" if control["program_upgrade_authority_is_single_key"]
-                         else "a program account")
+                         else "off-curve, so a program-derived address")
                 print(f"      !! that program is upgradeable by {authority} ({shape});")
                 print(f"         the control chain ends there and we have not identified it")
             else:

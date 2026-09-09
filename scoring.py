@@ -331,7 +331,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.8"
+SCORING_VERSION = "2026.09.9"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -477,17 +477,25 @@ IDENTIFIED_HOLDER_FLAG_PREFIX = "concentration_held_by_"
 #
 # And what it did not establish, which belongs in the same breath:
 #
-#   That program is upgradeable. Its ProgramData names upgrade authority
-#   5myNNmEmPm3UAnJ2ggLEpnTFb9t9Gk8369wKw6n3uAKx, which is a plain
-#   System-Program-owned account -- a single private key, not a multisig
-#   program. So the code that governs the vault can be replaced by one
-#   unidentified key.
+#   That program is upgradeable, and its ProgramData names upgrade authority
+#   5myNNmEmPm3UAnJ2ggLEpnTFb9t9Gk8369wKw6n3uAKx.
 #
-# The exemption still stands, because it only ever claimed identification. But
-# the control chain ends somewhere we cannot name, and a reader is told so
-# rather than left to assume a program-owned address is beyond reach. This is
-# the same reasoning applied to the `upgrade` power on the EVM side: history
-# and structure are evidence about code that can be replaced.
+#   I first reported that authority as "a single private key" because its
+#   account owner is the System Program. That was wrong, and the correction
+#   matters in the token's favour: the address is **off the ed25519 curve**, so
+#   no keypair can exist for it. It is a PDA of some program I have not
+#   identified. Account ownership and curve membership are different questions
+#   and I answered the second with the first.
+#
+#   What is established: the vault has no private key, and neither does the
+#   authority that can replace the program governing it. What is not: which
+#   program that authority belongs to, and therefore who can actually trigger
+#   an upgrade.
+#
+# So the exemption identifies and stops there. It does not reduce the
+# concentration risk -- naming a holder answers who, not how much sits in one
+# account, and the account is controlled by a program that can be replaced by
+# something we cannot name.
 #
 # `qa/verify_protocol_vaults.py` re-checks all three against live data.
 KNOWN_PROTOCOL_VAULTS = {
@@ -501,7 +509,11 @@ KNOWN_PROTOCOL_VAULTS = {
         "owner_program": "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu",
         "has_private_key": False,
         "program_upgrade_authority": "5myNNmEmPm3UAnJ2ggLEpnTFb9t9Gk8369wKw6n3uAKx",
-        "program_upgrade_authority_is_single_key": True,
+        # Off the ed25519 curve, so no keypair exists for it either. Which
+        # program derives it, and therefore who can actually trigger an
+        # upgrade, is not established.
+        "program_upgrade_authority_is_single_key": False,
+        "program_upgrade_authority_is_off_curve": True,
     },
 }
 
@@ -551,32 +563,30 @@ def measured_concentration(report: dict[str, Any]) -> dict[str, float | None]:
         if str(h.get("owner") or "") in KNOWN_PROTOCOL_VAULTS
     )
     return {
-        "top1_pct": shares[0],
-        "top10_pct": sum(shares[:10]),
+        # max, not shares[0]. The upstream table is normally sorted, and
+        # relying on that made "the largest holder" mean "whoever the source
+        # listed first" -- an assumption about someone else's output that
+        # nothing here enforces.
+        "top1_pct": max(shares),
+        "top10_pct": sum(sorted(shares, reverse=True)[:10]),
         "identified_pct": identified,
     }
 
 
 def unidentified_concentration(report: dict[str, Any]) -> dict[str, float | None]:
-    """Concentration left once named protocol accounts are set aside.
+    """Concentration with the named accounts marked, not removed.
 
-    A vault holding a bridge's collateral is not a wallet holding the exit. It
-    is still disclosed; it is just no longer *unidentified*, which is the only
-    thing the distribution findings actually assert.
+    This used to set named vaults aside and report what was left, which made
+    identification reduce the risk. Review separated the two, and it was right
+    to: naming a holder answers *who*, and the risk of a large share sitting in
+    one account is not a question about its name. A protocol vault can be
+    drained by whoever controls the protocol -- for the one entry on our list
+    that is a program upgradeable by an authority we have not identified.
+
+    So the figures returned are the measured ones. `identified_pct` says how
+    much of the concentration we can attribute, and nothing subtracts it.
     """
-    measured = measured_concentration(report)
-    if measured["top1_pct"] is None:
-        return measured
-    holders = _top_holders(report)
-    unnamed = [
-        _number(h.get("pct")) or 0.0 for h in holders
-        if str(h.get("owner") or "") not in KNOWN_PROTOCOL_VAULTS
-    ]
-    return {
-        "top1_pct": max(unnamed) if unnamed else 0.0,
-        "top10_pct": sum(unnamed[:10]),
-        "identified_pct": measured["identified_pct"],
-    }
+    return measured_concentration(report)
 
 
 def unsupported_distribution_flags(report: dict[str, Any], flags: list[str]) -> list[str]:
@@ -832,13 +842,17 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
     unsupported = unsupported_distribution_flags(report, flags)
     if unsupported:
         flags.append("distribution_findings_not_supported_by_holder_table")
-        named = {
-            PROTOCOL_VAULT_NAMES[str(holder.get("owner"))]
-            for holder in _top_holders(report)
-            if str(holder.get("owner") or "") in KNOWN_PROTOCOL_VAULTS
-        }
-        for vault in sorted(named):
-            flags.append(f"concentration_held_by_{_snake_case(vault)}")
+
+    # Reported on its own terms. Naming a holder no longer excuses the
+    # concentration, so this is only ever information -- which is what it
+    # should have been.
+    named = {
+        PROTOCOL_VAULT_NAMES[str(holder.get("owner"))]
+        for holder in _top_holders(report)
+        if str(holder.get("owner") or "") in KNOWN_PROTOCOL_VAULTS
+    }
+    for vault in sorted(named):
+        flags.append(f"concentration_held_by_{_snake_case(vault)}")
 
     risk, flags = apply_verdict_ceilings(
         _clamp(risk), flags, rugged=rugged,

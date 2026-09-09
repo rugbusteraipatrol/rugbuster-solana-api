@@ -62,23 +62,30 @@ def _holders(*pairs):
 
 # --- the case this was written for -----------------------------------------
 
-def test_a_curated_mint_whose_concentration_is_a_named_vault_is_cleared():
+def test_naming_the_holder_does_not_clear_the_concentration():
+    """This asserted GOOD, and review reversed it.
+
+    Identification answers *who holds it*. How much sits in one account is a
+    different question, and naming the account does not change the answer. The
+    one vault on our list is a program-derived address whose governing program
+    can be replaced by an authority nobody has identified -- so "named" is a
+    long way from "cannot be drained".
+
+    The name is still reported. It just no longer buys anything."""
     report = _report(_holders((VAULT, 60.4), ("SomeoneElse", 3.3), ("Another", 1.3)))
     result = score_live_rugcheck_report(report)
-    assert result["label"] == "GOOD"
-    assert "curated_mint_administrative_flags_only" in result["risk_flags"]
+    assert result["label"] != "GOOD"
     assert "concentration_held_by_jupiter_perps_pool_authority" in result["risk_flags"]
+    assert "single_holder_ownership" in result["risk_flags"]
 
 
 def test_the_findings_are_still_in_the_response():
-    """Suppression is about what a verdict may rest on, never about hiding a
-    fact. A reader must still see what RugCheck raised."""
+    """A reader must see what was raised, whether or not it moved a verdict."""
     report = _report(_holders((VAULT, 60.4), ("SomeoneElse", 3.3)))
     flags = score_live_rugcheck_report(report)["risk_flags"]
     assert "single_holder_ownership" in flags
     assert "high_holder_concentration" in flags
     assert "mint_authority_still_enabled" in flags
-    assert "distribution_findings_not_supported_by_holder_table" in flags
 
 
 # --- what must still bite --------------------------------------------------
@@ -92,11 +99,21 @@ def test_an_unnamed_wallet_holding_the_same_share_is_not_cleared():
     assert "concentration_held_by_jupiter_perps_pool_authority" not in result["risk_flags"]
 
 
-def test_a_named_vault_does_not_cover_a_second_unnamed_holder():
-    """Setting the vault aside must leave the rest of the table standing."""
+def test_the_measured_share_is_reported_whole():
+    """Nothing is subtracted for being named. The largest holder is the largest
+    holder."""
     report = _report(_holders((VAULT, 40.0), ("UnnamedWhale", 45.0)))
     assert unidentified_concentration(report)["top1_pct"] == 45.0
+    assert measured_concentration(report)["identified_pct"] == 40.0
     assert score_live_rugcheck_report(report)["label"] != "GOOD"
+
+
+def test_a_measured_low_concentration_still_contradicts_the_finding():
+    """The half that survives: a finding the holder table does not support is
+    still unsupported. That is about numbers, not about names."""
+    report = _report(_holders(("A", 12.0), ("B", 8.0), ("C", 4.0)))
+    assert "single_holder_ownership" in unsupported_distribution_flags(
+        report, ["single_holder_ownership"])
 
 
 def test_a_report_with_no_holder_table_contradicts_nothing():
