@@ -22,9 +22,11 @@ from scoring import (
     KNOWN_SOLANA_MINTS,
     administrative_flags_only,
     canonical_symbol_mint_mismatch,
+    independent_serious_signals,
     is_curated_canonical_mint,
     non_conclusive_flags_only,
     score_live_rugcheck_report,
+    score_scan_row,
 )
 
 # mSOL, curated by hand in KNOWN_SOLANA_MINTS.
@@ -126,17 +128,25 @@ def test_an_uncurated_mint_with_only_admin_flags_is_warn():
 
 
 def test_curation_is_by_mint_not_by_symbol():
-    """A different mint claiming the same name must not inherit the entry."""
+    """A different mint claiming the same name must not inherit the entry.
+
+    It is not cleared and not suppressed. It is also not called DANGER on the
+    name alone -- see the identity tests below for where that line now sits."""
     impostor = _report(mint="FakeMintSameName")
     assert is_curated_canonical_mint(impostor) is False
-    assert score_live_rugcheck_report(impostor)["label"] == "DANGER"
+    result = score_live_rugcheck_report(impostor)
+    assert result["label"] != "GOOD"
+    assert "curated_mint_administrative_flags_only" not in result["risk_flags"]
+    assert "identity_mismatch" in result["risk_flags"]
 
 
 def test_protected_symbol_with_a_different_mint_requires_review():
+    """Review, which is WARN. Not DANGER: see the identity tests below."""
     impostor = _report(mint="FakeMsolMint")
     result = score_live_rugcheck_report(impostor)
     assert canonical_symbol_mint_mismatch(impostor) is True
-    assert result["label"] == "DANGER"
+    assert result["label"] == "WARN"
+    assert "identity_mismatch" in result["risk_flags"]
     assert "symbol_matches_curated_asset_but_mint_differs" in result["risk_flags"]
 
 
@@ -178,21 +188,18 @@ def test_the_rule_only_lowers_a_score_and_never_raises_one():
     assert "curated_mint_administrative_flags_only" not in result["risk_flags"]
 
 
-# --- what the new rules reach, stated so it cannot drift silently ----------
+# --- a name collision is a reason to look, not a verdict -------------------
 #
-# Two rules landed together and both move a verdict on evidence that is weaker
-# than the verdict sounds. Neither is asserted to be wrong here; they are
-# pinned so that a later reader sees the reach and can argue with it.
+# The first version of this rule sent a symbol collision straight to DANGER.
+# Solana tickers are not unique and the rule's own docstring said it
+# establishes an address mismatch and not intent, so the label claimed more
+# than the evidence did. It now stops at WARN with an `identity_mismatch`
+# reason code, and may pass WARN only when something independent of the name
+# is also wrong.
 
-def test_a_clean_token_sharing_a_curated_symbol_is_danger_on_that_fact_alone():
-    """Solana tickers are not unique. A mint with no findings at all, no
-    authorities, deep liquidity and a symbol that collides with a curated
-    asset is called DANGER on the collision alone.
-
-    The rule's own docstring says this establishes an address mismatch and not
-    malicious intent -- DANGER is the strongest label we have, so the verdict
-    says more than the evidence does. Recorded for review, not endorsed."""
-    collision = {
+def _collision(**overrides) -> dict:
+    """A token that is clean apart from carrying a curated asset's ticker."""
+    report = {
         "mint": "SomeOtherLegitimateMint",
         "score": 100,
         "score_normalised": 2,
@@ -203,56 +210,69 @@ def test_a_clean_token_sharing_a_curated_symbol_is_danger_on_that_fact_alone():
         "tokenMeta": {"symbol": "RAY", "name": "Unrelated project", "mutable": False},
         "risks": [],
     }
-    result = score_live_rugcheck_report(collision)
+    report.update(overrides)
+    return report
+
+
+def test_a_symbol_collision_alone_is_warn_and_never_danger():
+    result = score_live_rugcheck_report(_collision())
+    assert result["label"] == "WARN"
+    assert result["risk_flags"] == ["identity_mismatch",
+                                    "symbol_matches_curated_asset_but_mint_differs"]
+
+
+def test_a_symbol_collision_alone_still_cannot_be_cleared():
+    """Capping at WARN must not turn into clearing. The address is still not
+    the one the ticker suggests."""
+    assert score_live_rugcheck_report(_collision())["label"] != "GOOD"
+
+
+def test_a_collision_reaches_danger_once_something_else_is_wrong():
+    """One independent finding -- here thin liquidity, which is a statement
+    about the token and not about its name -- and the ceiling lifts."""
+    report = _collision(score_normalised=95, risks=[{"name": "Low Liquidity"}])
+    result = score_live_rugcheck_report(report)
+    assert independent_serious_signals(result["risk_flags"]) == ["low_liquidity"]
     assert result["label"] == "DANGER"
-    assert result["risk_flags"] == ["symbol_matches_curated_asset_but_mint_differs"]
 
 
-def test_the_cap_does_not_reach_a_token_whose_symbol_collides():
-    """The mismatch flag is outside the non-conclusive set, so a collision is
-    not capped back down to WARN by the rule below it."""
-    collision = {
-        "mint": "AnotherMint", "score": 50000, "score_normalised": 95,
-        "totalHolders": 40_000, "totalMarketLiquidity": 5_000_000, "rugged": False,
-        "token": {"mintAuthority": "A", "freezeAuthority": "B"},
-        "tokenMeta": {"symbol": "JLP", "name": "Not the real one", "mutable": True},
-        "risks": [{"name": "Single holder ownership"}],
-    }
-    result = score_live_rugcheck_report(collision)
+def test_disclosures_alone_do_not_lift_the_identity_ceiling():
+    """Authorities and concentration are disclosures. Adding them to a name
+    collision adds no independent finding, so the ceiling holds."""
+    report = _collision(
+        score_normalised=95,
+        token={"mintAuthority": "A", "freezeAuthority": "B"},
+        risks=[{"name": "Single holder ownership"},
+               {"name": "Top 10 holders high ownership"}],
+    )
+    result = score_live_rugcheck_report(report)
+    assert independent_serious_signals(result["risk_flags"]) == []
+    assert result["label"] == "WARN"
+    assert "identity_mismatch_capped_at_warn" in result["risk_flags"]
+
+
+def test_a_rugged_token_is_not_held_at_warn_by_either_ceiling():
+    """No ceiling applies to a token upstream reports as already rugged."""
+    report = _collision(rugged=True)
+    result = score_live_rugcheck_report(report)
     assert result["label"] == "DANGER"
-    assert "non_conclusive_signals_capped_at_warn" not in result["risk_flags"]
+    assert "identity_mismatch_capped_at_warn" not in result["risk_flags"]
 
 
-def test_a_token_with_no_symbol_is_outside_the_mismatch_rule():
-    """The rule reads the reported symbol. A report that carries none cannot
-    collide, so omitting the symbol is a way around it."""
-    anonymous = {
-        "mint": "NoSymbolMint", "score": 100, "score_normalised": 2,
-        "totalHolders": 200_000, "totalMarketLiquidity": 20_000_000, "rugged": False,
-        "token": {"mintAuthority": None, "freezeAuthority": None},
-        "tokenMeta": {"name": "No symbol", "mutable": False}, "risks": [],
-    }
+def test_a_report_with_no_symbol_is_outside_the_rule():
+    """The rule reads the reported symbol. A report carrying none cannot
+    collide, so omitting the symbol is a way around it -- recorded, because a
+    rule that a scammer can step out of by leaving a field blank should be
+    known to be that rule."""
+    anonymous = _collision(tokenMeta={"name": "No symbol", "mutable": False})
     assert canonical_symbol_mint_mismatch(anonymous) is False
 
 
-def test_the_cap_makes_the_live_path_disagree_with_the_stored_path():
-    """Same evidence, two answers.
-
-    The cap was added to `score_live_rugcheck_report` only. A stored row for
-    the same token still yields DANGER, so which answer a caller receives now
-    depends on whether the row was cached, not on the token."""
-    from scoring import score_scan_row
-
-    live_report = {
-        "mint": "DivergentMint", "score": 50000, "score_normalised": 95,
-        "totalHolders": 40_000, "totalMarketLiquidity": 5_000_000, "rugged": False,
-        "token": {"mintAuthority": "A", "freezeAuthority": "B"},
-        "tokenMeta": {"symbol": "NEWCOIN", "name": "New", "mutable": True},
-        "risks": [{"name": "Single holder ownership"},
-                  {"name": "Top 10 holders high ownership"}],
-    }
-    live = score_live_rugcheck_report(live_report)
-    stored = score_scan_row({"mint": "DivergentMint", "risk_percent": 95, "label": "DANGER"})
-
-    assert live["label"] == "WARN"
-    assert stored["label"] == "DANGER"
+def test_provenance_flags_are_not_read_as_findings():
+    """Recording how a number was reached must not change the number."""
+    assert independent_serious_signals(
+        ["verdict_from_stored_risk_percent", "single_holder_ownership"]
+    ) == []
+    assert non_conclusive_flags_only(
+        ["verdict_from_stored_label", "single_holder_ownership"]
+    )

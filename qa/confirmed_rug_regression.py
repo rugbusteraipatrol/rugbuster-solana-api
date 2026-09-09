@@ -89,19 +89,26 @@ def main() -> int:
 
     labels = Counter(row["label"] or "ERROR" for row in results)
     cleared = [row["mint"] for row in results if row["label"] == "GOOD"]
+    scored = [row for row in results if row["label"]]
     args.output.write_text(json.dumps({
         "scoring_version": SCORING_VERSION,
-        "semantics": (
-            "On-chain confirmed rugs. GOOD on any of these is a scoring failure. "
-            "WARN is a refusal to clear, not a detection."
+        "claim": f"{len(scored) - len(cleared)} of {len(scored)} not cleared as GOOD",
+        "not_a_claim": (
+            "Not 'detected'. Most of these land on WARN because the live path "
+            "refuses to clear a mint with almost no holders left -- upstream "
+            "RugCheck scores them near its floor, and declining to agree is not "
+            "the same as identifying a rug. Quote the claim line, never a "
+            "detection rate."
         ),
+        "semantics": "On-chain confirmed rugs. GOOD on any of these is a scoring failure.",
         "counts": dict(sorted(labels.items())),
         "cleared_as_good": cleared,
         "results": results,
     }, indent=2) + "\n", encoding="utf-8")
 
     print(f"\nscoring_version={SCORING_VERSION} counts={dict(labels)}")
-    print(f"cleared_as_good={len(cleared)}")
+    print(f"{len(scored) - len(cleared)} of {len(scored)} not cleared as GOOD "
+          "-- not a detection rate")
     return 1 if cleared else 0
 
 

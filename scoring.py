@@ -271,11 +271,51 @@ def has_recomputable_evidence(record: dict[str, Any]) -> bool:
     return score is not None and _rugcheck_reliable(record, score)
 
 
+def carries_rugcheck_report(record: dict[str, Any]) -> bool:
+    """Does this stored record hold the upstream report itself?
+
+    When it does, the row is not a number of unknown provenance -- it is the
+    same evidence a live scan would fetch, and the current rules can be applied
+    to it directly. That is the only way a cached answer and a fresh one can be
+    guaranteed to agree.
+    """
+    if not isinstance(record, dict):
+        return False
+    if _number(record.get("score_normalised")) is not None:
+        return True
+    has_risks = isinstance(record.get("risks"), list)
+    has_token = isinstance(record.get("token"), dict) or isinstance(record.get("tokenMeta"), dict)
+    return has_risks and has_token
+
+
 def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict[str, Any]:
     record = _load_record(row.get("full_record"))
+
+    # Same evidence, same rules, same answer. Before this, the caps lived on the
+    # live path alone, so a token could be WARN when scanned and DANGER when
+    # read back from cache -- the verdict was a property of where the answer
+    # came from rather than of the token.
+    if carries_rugcheck_report(record):
+        if not record.get("mint") and row.get("mint"):
+            record = {**record, "mint": row["mint"]}
+        result = score_live_rugcheck_report(record)
+        result["risk_flags"] = sorted(
+            set(result["risk_flags"]) | {"verdict_recomputed_from_stored_evidence"}
+        )
+        return result
+
     risk_score, rugcheck_score, flags = derive_score(
         record, row.get("label"), trust_stored_score=trust_stored_score
     )
+    # The record holds no upstream report, so there is nothing to recompute
+    # from. The ceilings still apply: whatever the number's provenance, it may
+    # not claim more than the findings recorded alongside it support.
+    risk_score, flags = apply_verdict_ceilings(
+        risk_score, flags,
+        rugged=bool(record.get("rugged")),
+        curated=is_curated_canonical_mint({"mint": row.get("mint") or record.get("mint") or ""}),
+    )
+    flags = sorted(set(flag for flag in flags if flag))
     label = "GOOD" if risk_score < 35 else "WARN" if risk_score < 70 else "DANGER"
     token_name, token_symbol = _token_identity(record)
     return {
@@ -291,7 +331,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.6"
+SCORING_VERSION = "2026.09.7"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -364,6 +404,57 @@ DISTRIBUTION_RISK_ITEMS = {
 NON_CONCLUSIVE_RISK_ITEMS = ADMINISTRATIVE_RISK_ITEMS | DISTRIBUTION_RISK_ITEMS
 MAX_NON_CONCLUSIVE_RISK = 69
 
+# A symbol collision says the address is not the curated asset a user could
+# reasonably believe the symbol identifies. That is worth stopping on, and it is
+# not proof of anything about the token: Solana tickers are not unique, and a
+# project may legitimately use a name another project already uses.
+#
+# So it raises the token to WARN and no further. DANGER stays reserved for the
+# case where something independent of the name is also wrong.
+IDENTITY_MISMATCH_RISK = 60
+IDENTITY_RISK_ITEMS = {
+    "identity_mismatch",
+    "symbol_matches_curated_asset_but_mint_differs",
+}
+
+# Flags that describe how a verdict was reached rather than what was found.
+# They must not be read as findings: counting one as a signal would let the act
+# of recording provenance change the verdict it records.
+EVIDENCE_NEUTRAL_FLAGS = {
+    "verdict_from_stored_risk_percent",
+    "verdict_recomputed_from_rugcheck_score",
+    "verdict_recomputed_from_stored_evidence",
+    "verdict_from_stored_label",
+    "stored_score_ignored_unknown_provenance",
+    "rugcheck_score_unreliable_fresh_token",
+    "concentration_critical_override",
+    "curated_mint_administrative_flags_only",
+    "non_conclusive_signals_capped_at_warn",
+    "identity_mismatch_capped_at_warn",
+    "live_scan_cannot_clear_token",
+    "rugcheck_returned_no_holder_or_liquidity_data",
+    "too_few_holders_to_clear",
+    "insufficient_liquidity_to_clear",
+}
+
+
+def findings_only(flags: list[str]) -> list[str]:
+    """The flags that assert something about the token."""
+    return [flag for flag in flags if flag not in EVIDENCE_NEUTRAL_FLAGS]
+
+
+def independent_serious_signals(flags: list[str]) -> list[str]:
+    """Findings that are neither a disclosure nor the name collision itself.
+
+    This is what a DANGER verdict on a name collision has to rest on. Low
+    liquidity, an unlocked LP, a snipe, a deployer with a history: each is a
+    statement about the token that holds whatever it is called.
+    """
+    return sorted(
+        flag for flag in findings_only(flags)
+        if flag not in NON_CONCLUSIVE_RISK_ITEMS and flag not in IDENTITY_RISK_ITEMS
+    )
+
 # Concentration is deliberately NOT in that set. The first version of this
 # change included it, on the reasoning that across three quarters of a million
 # holders the top ten must be pools and bridges. That was an assumption and was
@@ -411,8 +502,49 @@ def administrative_flags_only(risk_items: list[str]) -> bool:
 
 
 def non_conclusive_flags_only(risk_items: list[str]) -> bool:
-    """Whether every finding is a control or distribution disclosure."""
-    return bool(risk_items) and all(item in NON_CONCLUSIVE_RISK_ITEMS for item in risk_items)
+    """Whether every finding is a control or distribution disclosure.
+
+    Provenance flags are not findings and are ignored here, so a row that
+    records how its number was obtained does not thereby escape the cap.
+    """
+    findings = findings_only(list(risk_items))
+    return bool(findings) and all(item in NON_CONCLUSIVE_RISK_ITEMS for item in findings)
+
+
+def apply_verdict_ceilings(
+    risk: int,
+    flags: list[str],
+    *,
+    rugged: bool,
+    curated: bool,
+) -> tuple[int, list[str]]:
+    """The rules that decide how far a verdict may go, applied in one place.
+
+    Both paths call this. When they did not, the cap existed on the live path
+    only and the same evidence returned WARN from a fresh scan and DANGER from
+    a cached row -- which made the answer a property of our cache rather than
+    of the token.
+    """
+    flags = list(flags)
+
+    if not rugged and curated and administrative_flags_only(findings_only(flags))             and risk > CURATED_ADMINISTRATIVE_RISK:
+        risk = CURATED_ADMINISTRATIVE_RISK
+        flags.append("curated_mint_administrative_flags_only")
+
+    # Active authorities and concentrated ownership are material disclosures,
+    # but without a stronger event or exploit signal they do not establish a
+    # rug. Keep the token in WARN and preserve every underlying flag.
+    if not rugged and non_conclusive_flags_only(flags) and risk > MAX_NON_CONCLUSIVE_RISK:
+        risk = MAX_NON_CONCLUSIVE_RISK
+        flags.append("non_conclusive_signals_capped_at_warn")
+
+    # A name collision on its own stops at WARN. It is a reason to look, not a
+    # finding about the token, and DANGER would claim more than it establishes.
+    if not rugged and any(flag in IDENTITY_RISK_ITEMS for flag in flags)             and not independent_serious_signals(flags)             and risk > MAX_NON_CONCLUSIVE_RISK:
+        risk = MAX_NON_CONCLUSIVE_RISK
+        flags.append("identity_mismatch_capped_at_warn")
+
+    return _clamp(risk), flags
 
 
 def canonical_symbol_mint_mismatch(report: dict[str, Any]) -> bool:
@@ -514,37 +646,20 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
     rugged = report.get("rugged") is True
 
     if canonical_symbol_mint_mismatch(report):
-        risk = max(risk, 70)
+        # A floor, not a verdict. `apply_verdict_ceilings` decides whether this
+        # may go past WARN, and it may only when something independent of the
+        # name is also wrong.
+        risk = max(risk, IDENTITY_MISMATCH_RISK)
+        flags.append("identity_mismatch")
         flags.append("symbol_matches_curated_asset_but_mint_differs")
 
-    # RugCheck's normalised score is inherited wholesale above. For curated
-    # assets, that score can be dominated by administrative powers which are
-    # expected for the identified issuer. The powers remain relevant facts,
-    # but they are not by themselves evidence that the issuer will rug.
-    #
-    # So when the mint is one we have identified by hand, and every risk raised
-    # against it is administrative, that score is not carried into the verdict.
-    #
-    # Every flag stays in the response. Suppression means "these powers are
-    # expected for this issuer", never "these powers are absent" -- a reader
-    # still sees the mint authority on a wrapped asset, and a consumer that
-    # cares about authorities can act on it. It is a rug verdict this declines
-    # to draw from them, not the facts it hides.
-    if (
-        not rugged
-        and is_curated_canonical_mint(report)
-        and administrative_flags_only(flags)
-        and risk > CURATED_ADMINISTRATIVE_RISK
-    ):
-        risk = CURATED_ADMINISTRATIVE_RISK
-        flags.append("curated_mint_administrative_flags_only")
-
-    # Active authorities and concentrated ownership are material disclosures,
-    # but without a stronger event or exploit signal they do not establish a
-    # rug. Keep the token in WARN and preserve every underlying flag.
-    if not rugged and non_conclusive_flags_only(flags) and risk > MAX_NON_CONCLUSIVE_RISK:
-        risk = MAX_NON_CONCLUSIVE_RISK
-        flags.append("non_conclusive_signals_capped_at_warn")
+    # Curated suppression, the non-conclusive cap and the identity cap all live
+    # in `apply_verdict_ceilings`, which the stored path calls too. Every flag
+    # stays in the response either way: suppression means "these powers are
+    # expected for this issuer", never "these powers are absent".
+    risk, flags = apply_verdict_ceilings(
+        _clamp(risk), flags, rugged=rugged, curated=is_curated_canonical_mint(report)
+    )
 
     if rugged:
         risk = 98

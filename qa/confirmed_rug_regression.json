@@ -1,6 +1,8 @@
 {
-  "scoring_version": "2026.09.6",
-  "semantics": "On-chain confirmed rugs. GOOD on any of these is a scoring failure. WARN is a refusal to clear, not a detection.",
+  "scoring_version": "2026.09.7",
+  "claim": "17 of 17 not cleared as GOOD",
+  "not_a_claim": "Not 'detected'. Most of these land on WARN because the live path refuses to clear a mint with almost no holders left -- upstream RugCheck scores them near its floor, and declining to agree is not the same as identifying a rug. Quote the claim line, never a detection rate.",
+  "semantics": "On-chain confirmed rugs. GOOD on any of these is a scoring failure.",
   "counts": {
     "DANGER": 1,
     "WARN": 16
