@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""Do the current live rules still bite on rugs that are proven on-chain?
+"""Do the current live rules still bite on tokens whose creator bought and left?
 
 A relaxation is the cheap way to make an uncomfortable number go away, so any
-change that lowers a verdict has to be checked against tokens whose outcome is
-not in dispute. These 17 are the published confirmed set from
-`rugbuster-solana-goplus-benchmark`: creator bought, then offloaded at least
-95% of peak holding, traced through Helius rather than taken from our own
+change that lowers a verdict has to be checked against outcomes that are not in
+dispute. These 17 are the published set from
+`rugbuster-solana-goplus-benchmark`: the creator bought, then offloaded at
+least 95% of peak holding, traced through Helius rather than taken from our own
 database. GoPlus called all 17 safe; RugCheck's score caught 1.
+
+What is established on chain is the buy and the exit. Whether each exit was a
+rug -- rather than a founder selling, a treasury rebalancing, or a project
+ending -- is an interpretation nobody independently adjudicated. This file used
+to call them confirmed rugs, which claimed the interpretation as a measurement.
+The set is creator-exit-confirmed. That is still unusual evidence to hold; it
+is a narrower sentence than the one it replaces.
 
 This measures scoring only. It calls upstream RugCheck and scores locally, and
 never touches a RugBuster service -- whether our API is up is a separate
@@ -30,7 +37,8 @@ sys.path.insert(0, str(ROOT))
 
 from scoring import SCORING_VERSION, score_live_rugcheck_report  # noqa: E402
 
-# data/confirmed_17.json of rugbuster-solana-goplus-benchmark, on-chain confirmed.
+# data/confirmed_17.json of rugbuster-solana-goplus-benchmark. Confirmed on
+# chain: the creator bought and then exited at least 95% of peak holding.
 CONFIRMED_RUGS = [
     "23dxgqAtivdW9cZz7UDFAGXUtByz5sXhKRDENdbXpump",
     "3FpBvhnAJAxjH25WqpYfoUuuB7Dy1UT72Aax4Na5pump",
@@ -100,7 +108,11 @@ def main() -> int:
             "the same as identifying a rug. Quote the claim line, never a "
             "detection rate."
         ),
-        "semantics": "On-chain confirmed rugs. GOOD on any of these is a scoring failure.",
+        "semantics": (
+            "Creator-exit-confirmed on chain: bought, then offloaded 95%+ of peak "
+            "holding. Not independently adjudicated as rugs. GOOD on any of these "
+            "is a scoring failure."
+        ),
         "counts": dict(sorted(labels.items())),
         "cleared_as_good": cleared,
         "results": results,

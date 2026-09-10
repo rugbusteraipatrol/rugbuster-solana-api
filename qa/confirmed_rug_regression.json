@@ -2,7 +2,7 @@
   "scoring_version": "2026.09.9",
   "claim": "17 of 17 not cleared as GOOD",
   "not_a_claim": "Not 'detected'. Most of these land on WARN because the live path refuses to clear a mint with almost no holders left -- upstream RugCheck scores them near its floor, and declining to agree is not the same as identifying a rug. Quote the claim line, never a detection rate.",
-  "semantics": "On-chain confirmed rugs. GOOD on any of these is a scoring failure.",
+  "semantics": "Creator-exit-confirmed on chain: bought, then offloaded 95%+ of peak holding. Not independently adjudicated as rugs. GOOD on any of these is a scoring failure.",
   "counts": {
     "DANGER": 1,
     "WARN": 16
