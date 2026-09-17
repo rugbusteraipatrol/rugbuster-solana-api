@@ -138,6 +138,90 @@ def _existing_flags(record: dict[str, Any]) -> list[str]:
     return flags
 
 
+# Deployer history: what the collector recorded about the creator's earlier
+# tokens. These thresholds are the ones `derive_score` has always applied to a
+# stored row. The live path now applies the same ones when the caller holds a
+# stored row for the mint, so a creator with three rugs on record gets the same
+# floor whether the request was answered from the row or from a fresh upstream
+# report -- the verdict is a property of the deployer, not of which path ran.
+CREATOR_RUG_RATE_HIGH = 80
+CREATOR_RUG_RATE_ELEVATED = 40
+CREATOR_RUG_RATE_HIGH_RISK = 85
+CREATOR_RUG_RATE_ELEVATED_RISK = 70
+CREATOR_PRIOR_RUGS_RISK = 70
+
+
+def deployer_history_from_record(record: dict[str, Any]) -> dict[str, Any] | None:
+    """What a collector row says about this token's creator, if anything.
+
+    The collector traces the creator and counts earlier tokens of theirs that
+    rugged; until now the live path never read it, so a refresh threw the
+    strongest signal in the row away. Returns None when the row names no
+    creator and carries no count, so an absence stays an absence rather than
+    becoming an empty, reassuring record.
+    """
+    if not isinstance(record, dict):
+        return None
+    creator = record.get("creator")
+    creator = creator.strip() if isinstance(creator, str) and creator.strip() else None
+    counted = _first_number(record, "v6_serial_rug_count")
+    rate = _creator_rug_rate(record)
+    hops = _first_number(record, "cia_funding_hops")
+    if creator is None and counted is None and rate is None:
+        return None
+    # The collector's `check_serial_rugger` increments the creator's rug count
+    # for the token being scanned, when that token is itself labelled DANGER,
+    # before it reports the count. So a row reading count=1, DANGER says "this
+    # token" and nothing about any earlier one. Counting it here would let a
+    # verdict cite itself as its own history. The creator rug rate is computed
+    # before the label and needs no correction.
+    prior = None
+    if counted is not None:
+        this_token = str(record.get("label") or "").upper() == "DANGER"
+        prior = max(0, int(counted) - (1 if this_token else 0))
+    return {
+        "creator": creator,
+        "prior_rugs_on_record": prior,
+        "creator_rug_rate": rate,
+        # Carried for the reader. The collector's own calibration weighs it;
+        # this service does not know its threshold and does not score on it.
+        "funding_hops": int(hops) if hops is not None else None,
+        "serial_rugger": bool(prior and prior >= 1),
+    }
+
+
+def apply_deployer_history(
+    risk: int, flags: list[str], history: dict[str, Any] | None
+) -> tuple[int, list[str]]:
+    """The deployer-history floors, applied to any path that holds a history.
+
+    A floor, never a cap: history can only raise a verdict. Its flags are
+    findings about the creator's record -- not disclosures, not the name --
+    which is exactly what `independent_serious_signals` says may carry a
+    verdict past WARN.
+    """
+    flags = list(flags)
+    if not history:
+        return _clamp(risk), flags
+    rate = _number(history.get("creator_rug_rate"))
+    prior = _number(history.get("prior_rugs_on_record"))
+    if rate is not None and rate >= CREATOR_RUG_RATE_HIGH:
+        risk = max(risk, CREATOR_RUG_RATE_HIGH_RISK)
+        flags.append("creator_rug_rate_high")
+    elif rate is not None and rate >= CREATOR_RUG_RATE_ELEVATED:
+        risk = max(risk, CREATOR_RUG_RATE_ELEVATED_RISK)
+        flags.append("creator_rug_rate_elevated")
+    if (prior is not None and prior >= 1) or history.get("serial_rugger") is True:
+        risk = max(risk, CREATOR_PRIOR_RUGS_RISK)
+        flags.append("creator_history_of_rugged_tokens")
+    return _clamp(risk), flags
+
+
+def label_for_risk(risk: int) -> str:
+    """The one place a number becomes a word."""
+    return "GOOD" if risk < 35 else "WARN" if risk < 70 else "DANGER"
+
+
 def derive_score(
     record: dict[str, Any],
     row_label: str | None,
@@ -190,11 +274,11 @@ def derive_score(
             flags.append("verdict_from_stored_label")
 
         creator_rate = _creator_rug_rate(record)
-        if creator_rate is not None and creator_rate >= 80:
-            risk = max(risk, 85)
+        if creator_rate is not None and creator_rate >= CREATOR_RUG_RATE_HIGH:
+            risk = max(risk, CREATOR_RUG_RATE_HIGH_RISK)
             flags.append("creator_rug_rate_high")
-        elif creator_rate is not None and creator_rate >= 40:
-            risk = max(risk, 70)
+        elif creator_rate is not None and creator_rate >= CREATOR_RUG_RATE_ELEVATED:
+            risk = max(risk, CREATOR_RUG_RATE_ELEVATED_RISK)
             flags.append("creator_rug_rate_elevated")
 
         text = _text_blob(record).lower()
@@ -221,7 +305,7 @@ def derive_score(
         latency = _first_number(record, "cia_deployment_latency_ms")
         flags.append(f"sniped_in_{max(0, round(latency))}ms" if latency is not None else "sniped_at_launch")
     creator_rate = _creator_rug_rate(record)
-    if creator_rate is not None and creator_rate >= 80:
+    if creator_rate is not None and creator_rate >= CREATOR_RUG_RATE_HIGH:
         flags.append("creator_rug_rate_high")
 
     # A CRITICAL internal concentration signal is our own computed evidence --
@@ -331,7 +415,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.9"
+SCORING_VERSION = "2026.09.10"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -774,8 +858,16 @@ def live_report_supports_clean_verdict(report: dict[str, Any]) -> tuple[bool, st
     return True, ""
 
 
-def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
-    """Build a conservative baseline score from one live RugCheck report."""
+def score_live_rugcheck_report(
+    report: dict[str, Any], history: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Build a conservative baseline score from one live RugCheck report.
+
+    `history` is what the collector recorded about the creator's earlier
+    tokens, when the caller holds a stored row for this mint. Without it this
+    is a one-shot baseline; with it, the same floors `derive_score` applies to
+    the stored row apply here, so a refresh cannot silently drop the deployer.
+    """
     normalized = _number(report.get("score_normalised"))
     raw_score = _number(report.get("score"))
     risk = _clamp(normalized) if normalized is not None else (
@@ -854,6 +946,12 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
     for vault in sorted(named):
         flags.append(f"concentration_held_by_{_snake_case(vault)}")
 
+    # What the collector recorded about this creator's earlier tokens. A
+    # deployer history is one of the independent serious signals the ceilings
+    # name, so it may carry a verdict past WARN where a disclosure alone could
+    # not -- and it is applied before the ceilings so they can see it.
+    risk, flags = apply_deployer_history(risk, flags, history)
+
     risk, flags = apply_verdict_ceilings(
         _clamp(risk), flags, rugged=rugged,
         curated=is_curated_canonical_mint(report), unsupported=unsupported,
@@ -864,7 +962,7 @@ def score_live_rugcheck_report(report: dict[str, Any]) -> dict[str, Any]:
         flags.append("rugcheck_flagged_rugged")
 
     risk_score = _clamp(risk)
-    label = "GOOD" if risk_score < 35 else "WARN" if risk_score < 70 else "DANGER"
+    label = label_for_risk(risk_score)
 
     # A floor score from a mint with no economic life is not a clean bill of
     # health. Withhold GOOD rather than inflate the score: this path has no

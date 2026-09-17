@@ -70,6 +70,36 @@ analysis, and wallet clustering accumulated over time. A single live RugCheck
 report cannot reproduce those richer signals, so its source is explicitly
 `live_rugcheck` or `live_cache`.
 
+## Deployer history across a refresh (2026.09.10)
+
+When a stored collector row is too old to serve and the token is refreshed from
+a live report, the row's deployer history is not discarded with it. The record's
+`creator`, `v6_serial_rug_count`, `creator_rug_rate` and `cia_funding_hops` are
+carried into the response as `deployer_history` (with `source:
+collector_record` and the date the row was written) and the same floors the
+stored path applies are applied to the live score, on both refresh branches:
+
+- Creator rug rate >=80%: minimum risk 85; `creator_rug_rate_high`.
+- Creator rug rate >=40%: minimum risk 70; `creator_rug_rate_elevated`.
+- One or more earlier tokens by this creator on record as rugged: minimum
+  risk 70; `creator_history_of_rugged_tokens`.
+
+`prior_rugs_on_record` is `v6_serial_rug_count` minus one when the row itself
+is DANGER: the collector increments the creator's count for the token being
+scanned before reporting it, so a row reading count=1, DANGER says "this token"
+and nothing about an earlier one. A verdict may not cite itself as its own
+history. `creator_rug_rate` is computed before the label and is used as is.
+`cia_funding_hops` is carried for the reader and does not move the score: the
+collector's own calibration weighs it, and this service does not know its
+threshold.
+
+These are floors, never caps. They count as independent serious signals, so
+they may carry a verdict past the WARN ceiling that disclosures alone cannot.
+The evidence dimension `creator_history` reports the record as collected; a
+count of zero is reported as PARTIAL coverage, not as clearance. A row that
+names no creator and carries no count yields no history block, and the
+dimension stays NOT_COLLECTED.
+
 RugCheck HTTP errors, 429 responses, timeouts, malformed JSON, or cache setup
 failure return `UNKNOWN` with a null risk score and source
 `live_scan_unavailable`. They never return GOOD.

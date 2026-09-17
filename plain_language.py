@@ -89,10 +89,35 @@ def not_established(evidence: dict[str, Any]) -> list[str]:
 FINDING, REFUSAL, GAP = "FINDING", "REFUSAL", "GAP"
 
 
-def _finding_sentence(label: str, flags: list[str]) -> tuple[str, str]:
+HISTORY_FLAGS = {"creator_history_of_rugged_tokens", "creator_rug_rate_high", "creator_rug_rate_elevated"}
+
+
+def _history_sentence(history: dict[str, Any]) -> str:
+    prior = history.get("prior_rugs_on_record")
+    rate = history.get("creator_rug_rate")
+    parts: list[str] = []
+    if isinstance(prior, (int, float)) and prior >= 1:
+        count = int(prior)
+        parts.append(f"{count} earlier token{'s' if count != 1 else ''} by this creator rugged")
+    if isinstance(rate, (int, float)):
+        parts.append(f"creator rug rate {rate:g}%")
+    detail = "; ".join(parts) or "this creator's earlier tokens rugged"
+    return (
+        f"This deployer has done this before: {detail}. That is a finding about "
+        "the creator's record, not a measurement of this token's current market."
+    )
+
+
+def _finding_sentence(
+    label: str, flags: list[str], history: dict[str, Any] | None = None
+) -> tuple[str, str]:
     """The headline, and which of the three kinds it is."""
     if "rugcheck_flagged_rugged" in flags:
         return "The upstream report marks this token as already rugged.", FINDING
+    # A deployer with rugs on record outranks a refusal: the refusal says we
+    # found nothing to clear the token with, and this says we found something.
+    if any(flag in HISTORY_FLAGS for flag in flags):
+        return _history_sentence(history or {}), FINDING
     if "live_scan_cannot_clear_token" in flags:
         return (
             "Nothing here supports calling this token safe: it has almost no "
@@ -132,8 +157,9 @@ def describe(payload: dict[str, Any]) -> dict[str, Any]:
     label = str(payload.get("label") or "").upper()
     flags = [str(flag) for flag in (payload.get("risk_flags") or [])]
     evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
+    history = payload.get("deployer_history") if isinstance(payload.get("deployer_history"), dict) else None
 
-    summary, kind = _finding_sentence(label, flags)
+    summary, kind = _finding_sentence(label, flags, history)
     gaps = not_established(evidence)
 
     # Only a GAP earns the reassuring clause. A refusal to clear must never be

@@ -14,12 +14,14 @@ dimension below reads Solana's own vocabulary -- the flags this service emits
 and the RugCheck report it fetches -- and reports UNKNOWN where this service
 simply does not have the input.
 
-The most consequential of those is `creator_history`. **This service has none.**
-There is no deployer lookup on the Solana path at all, so the dimension reports
-NOT_COLLECTED rather than an empty record. A deployer with a long history of
-rugs and one nobody has ever seen produce the same answer here, and that fact
-should be visible in the response instead of being inferable only by reading the
-source.
+The most consequential of those is `creator_history`. This service performs no
+deployer lookup of its own; what it can report is what the collector recorded
+when it traced the creator of a mint it scanned, carried in the response as
+`deployer_history`. Where no such record exists the dimension reports
+NOT_COLLECTED rather than an empty record: a deployer with a long history of
+rugs and one nobody has ever seen must not produce the same reassuring answer,
+and the absence should be visible in the response instead of being inferable
+only by reading the source.
 
 Additive by construction: no verdict is read or written here, pinned by a test.
 """
@@ -250,22 +252,48 @@ def issuer_identity(payload: dict[str, Any], report: dict[str, Any] | None = Non
 
 
 def creator_history(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Not collected on this service.
+    """What is on record about the creator, or the plain fact that nothing is.
 
-    There is no deployer lookup anywhere on the Solana path. A creator with a
-    long record of rugs and one nobody has ever seen currently produce the same
-    answer, and reporting an empty record would present that absence as a clean
-    one. It is reported as uncollected instead, so the gap is visible in the
-    response rather than only in the source.
+    This service performs no deployer lookup of its own. When the collector
+    traced the creator of this mint, that record travels in the payload as
+    `deployer_history` and is reported here. Otherwise the dimension is
+    uncollected: a creator with a long record of rugs and one nobody has ever
+    seen must not produce the same answer, and reporting an empty record would
+    present that absence as a clean one.
     """
+    history = payload.get("deployer_history")
+    if not isinstance(history, dict):
+        return {
+            "status": NOT_COLLECTED,
+            "creator": None,
+            "prior_tokens_scanned_by_us": None,
+            "confirmed_incidents": {"count": None, "status": NOT_COLLECTED},
+            "note": (
+                "No deployer history is on record for this mint. Absent coverage, "
+                "not an absence of incidents."
+            ),
+        }
+    prior = history.get("prior_rugs_on_record")
     return {
-        "status": NOT_COLLECTED,
-        "creator": None,
+        "status": OK,
+        "creator": history.get("creator"),
         "prior_tokens_scanned_by_us": None,
-        "confirmed_incidents": {"count": None, "status": NOT_COLLECTED},
+        "prior_rugs_on_record": prior,
+        "creator_rug_rate": history.get("creator_rug_rate"),
+        "funding_hops": history.get("funding_hops"),
+        "observed_at": history.get("observed_at"),
+        "source": history.get("source"),
+        # A count of one or more is a finding. A count of zero says only that
+        # the tokens the collector traced had not rugged when it looked, which
+        # is coverage, not clearance, so the gap stays listed.
+        "confirmed_incidents": {
+            "count": prior,
+            "status": OK if isinstance(prior, (int, float)) and prior >= 1 else PARTIAL,
+        },
         "note": (
-            "This service does not look up deployer history. Absent coverage, "
-            "not an absence of incidents."
+            "Recorded by the collector when it traced this creator's earlier "
+            "tokens. A history of rugs is a finding about the deployer, not a "
+            "measurement of this token's current market."
         ),
     }
 

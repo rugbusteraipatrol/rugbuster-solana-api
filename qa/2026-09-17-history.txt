@@ -1,0 +1,28 @@
+﻿Local /score dry run against the production database, 2026-09-17.
+Cache writes (insert_live_cache) disabled; reads only. Code: this commit, SCORING_VERSION 2026.09.10.
+Mints: the 17 creator-exit-confirmed set from rugbuster-solana-goplus-benchmark, plus USDC and one control mint.
+prior_rugs is net of the token itself (the collector counts the scanned token when it is DANGER).
+
+Before this change (public API, 3c43754, same day): 16 of 17 returned WARN / REFUSAL.
+
+23dxgqAtiv.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=2 rate=50.0 ch=OK flags=['creator_history_of_rugged_tokens', 'creator_rug_rate_elevated']
+3FpBvhnAJA.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=2 rate=100.0 ch=OK flags=['creator_history_of_rugged_tokens', 'creator_rug_rate_high']
+3TByinjHpn.. WARN   REFUSAL  src=live_rugcheck_refresh  prior_rugs=0 rate=0.0 ch=OK flags=['live_scan_cannot_clear_token']
+3ZuZXv2g3T.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=2 rate=100.0 ch=OK flags=['creator_history_of_rugged_tokens', 'creator_rug_rate_high']
+3n1Zy2pjN1.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=2 rate=50.0 ch=OK flags=['creator_history_of_rugged_tokens', 'creator_rug_rate_elevated']
+6ML7tXmHEy.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=3 rate=0.0 ch=OK flags=['creator_history_of_rugged_tokens']
+6vpuYc1Jzw.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=2 rate=100.0 ch=OK flags=['creator_history_of_rugged_tokens', 'creator_rug_rate_high']
+74nxamVTxG.. WARN   REFUSAL  src=live_rugcheck_refresh  prior_rugs=0 rate=0.0 ch=OK flags=['live_scan_cannot_clear_token']
+7p7ZMhihbD.. WARN   REFUSAL  src=live_rugcheck_refresh  prior_rugs=0 rate=0.0 ch=OK flags=['live_scan_cannot_clear_token']
+AShmQtSBCX.. WARN   REFUSAL  src=live_rugcheck_refresh  prior_rugs=0 rate=0.0 ch=OK flags=['live_scan_cannot_clear_token']
+AyerU4udx5.. WARN   REFUSAL  src=live_rugcheck_refresh  prior_rugs=0 rate=0.0 ch=OK flags=['live_scan_cannot_clear_token']
+BiHqVnZibF.. WARN   REFUSAL  src=live_rugcheck_refresh  prior_rugs=0 rate=6.7 ch=OK flags=['live_scan_cannot_clear_token']
+CHMfiUmZvK.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=0 rate=100.0 ch=OK flags=['creator_rug_rate_high']
+CXRhJrBcCk.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=2 rate=100.0 ch=OK flags=['creator_history_of_rugged_tokens', 'creator_rug_rate_high']
+ETWVkgQHsq.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=2 rate=50.0 ch=OK flags=['creator_history_of_rugged_tokens', 'creator_rug_rate_elevated']
+HEoAb66vM8.. WARN   REFUSAL  src=live_rugcheck_refresh  prior_rugs=0 rate=0.0 ch=OK flags=['live_scan_cannot_clear_token']
+HoBvJJQxb9.. DANGER FINDING  src=live_rugcheck_refresh  prior_rugs=2 rate=50.0 ch=OK flags=['creator_history_of_rugged_tokens', 'creator_rug_rate_elevated']
+EPjFWdd5Au.. GOOD   FINDING  src=live_rugcheck_refresh  prior_rugs=0 rate=0.0 ch=OK flags=[]
+6BmPY8dxMg.. UNKNOWN GAP      src=live_scan_unavailable  prior_rugs=None rate=None ch=NOT_COLLECTED flags=[]
+counts: {'DANGER': 10, 'WARN': 7, 'GOOD': 1, 'UNKNOWN': 1}
+sample summary: No verdict is being given for this token. What is missing is knowledge on our side, not evidence against the token: see not_established.

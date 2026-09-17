@@ -24,7 +24,10 @@ from freshness import (
 )
 from scoring import (
     SCORING_VERSION,
+    apply_deployer_history,
+    deployer_history_from_record,
     has_recomputable_evidence,
+    label_for_risk,
     score_live_rugcheck_report,
     score_scan_row,
     stored_scoring_version,
@@ -249,11 +252,45 @@ def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None)
     return enriched
 
 
-def refresh_stale_record(address: str, state: dict[str, Any]) -> dict[str, Any] | None:
+def history_block(history: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    """The deployer history as it travels in a response: what the collector
+    recorded, and when. A rug that happened does not un-happen when the row
+    holding it ages, so the history is carried across a refresh; the date it
+    was recorded is kept beside it rather than hidden."""
+    return {**history, "source": "collector_record", "observed_at": state.get("observed_at")}
+
+
+def with_deployer_history(
+    result: dict[str, Any], history: dict[str, Any] | None, state: dict[str, Any]
+) -> dict[str, Any]:
+    """Apply a stored row's deployer history to an already-scored live answer.
+
+    Used where the answer was scored without the history in hand -- a cached
+    live row written on a direct fetch. The floors are the same ones the
+    network path applies inside `score_live_rugcheck_report`, so the two
+    refresh branches cannot disagree about the same deployer.
+    """
+    if not history or result.get("risk_score") is None:
+        return result
+    risk, flags = apply_deployer_history(int(result["risk_score"]), list(result.get("risk_flags") or []), history)
+    updated = {
+        **result,
+        "risk_score": risk,
+        "label": "DANGER" if result.get("label") == "DANGER" else label_for_risk(risk),
+        "risk_flags": sorted(set(flags)),
+        "deployer_history": history_block(history, state),
+    }
+    return with_identity(updated)
+
+
+def refresh_stale_record(
+    address: str, state: dict[str, Any], history: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
     """Get a current reading for a token whose stored evidence is not current.
 
     Checks the live cache before the network. Returns None when neither can
-    supply one, leaving the caller to withhold the verdict.
+    supply one, leaving the caller to withhold the verdict. `history` is what
+    the stale row recorded about the creator; it is applied on both branches.
     """
     try:
         ensure_live_cache_schema()
@@ -271,7 +308,7 @@ def refresh_stale_record(address: str, state: dict[str, Any]) -> dict[str, Any] 
             result = live_cache_result(cached_live, address)
             result["source"] = "live_cache_refresh"
             result["refreshed_stale_record_observed_at"] = state["observed_at"]
-            return result
+            return with_deployer_history(result, history, state)
 
     try:
         report = request_live_rugcheck(address)
@@ -280,7 +317,7 @@ def refresh_stale_record(address: str, state: dict[str, Any]) -> dict[str, Any] 
     if report is None:
         return None
 
-    live = score_live_rugcheck_report(report)
+    live = score_live_rugcheck_report(report, history=history)
     try:
         insert_live_cache(address, live, report)
     except Exception:
@@ -300,6 +337,8 @@ def refresh_stale_record(address: str, state: dict[str, Any]) -> dict[str, Any] 
             "refreshed_stale_record_observed_at": state["observed_at"],
         }
     )
+    if history:
+        live["deployer_history"] = history_block(history, state)
     return with_identity(live, report)
 
 
@@ -502,6 +541,13 @@ def score():
     # needs both reasons.
     state = assess(row.get("created_at"))
     inherited_unknown = verdict_provenance == "inherited_unknown_version"
+    # What the row recorded about the creator. `derive_score` already applied
+    # its floors to the stored verdict above; carrying the block here lets the
+    # evidence split report the history instead of calling it uncollected, and
+    # lets a refresh below keep it when the rest of the row is too old to serve.
+    history = deployer_history_from_record(record)
+    if history:
+        result["deployer_history"] = history_block(history, state)
     result.update(
         {
             "ok": True,
@@ -542,7 +588,7 @@ def score():
     # away, so without this every subsequent request re-fetches the same token
     # and an upstream outage returns UNKNOWN while valid recent evidence sits
     # in the cache unread.
-    refreshed = refresh_stale_record(address, state)
+    refreshed = refresh_stale_record(address, state, history)
     if refreshed is not None:
         return jsonify(refreshed)
 
