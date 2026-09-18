@@ -78,6 +78,10 @@ def not_established(evidence: dict[str, Any]) -> list[str]:
     if isinstance(incidents, dict) and str(incidents.get("status") or "").upper() != "OK":
         gaps.append("whether this token or its deployer has a confirmed incident on record")
 
+    position = _dimension(evidence, "creator_position")
+    if str(position.get("status") or "").upper() != "OK":
+        gaps.append("what the creator did with their own allocation")
+
     seen: set[str] = set()
     return [gap for gap in gaps if not (gap in seen or seen.add(gap))]
 
@@ -90,6 +94,45 @@ FINDING, REFUSAL, GAP = "FINDING", "REFUSAL", "GAP"
 
 
 HISTORY_FLAGS = {"creator_history_of_rugged_tokens", "creator_rug_rate_high", "creator_rug_rate_elevated"}
+POSITION_FLAGS = {"creator_holds_launch_allocation", "creator_sold_launch_allocation"}
+
+
+def _duration(seconds: Any) -> str:
+    if not isinstance(seconds, (int, float)) or seconds < 0:
+        return "later"
+    seconds = int(seconds)
+    if seconds < 90:
+        return f"{seconds} seconds later"
+    if seconds < 5400:
+        return f"{seconds // 60} minutes later"
+    if seconds < 172800:
+        return f"{seconds // 3600} hours later"
+    return f"{seconds // 86400} days later"
+
+
+def _position_sentence(position: dict[str, Any]) -> str:
+    share = position.get("peak_share_pct")
+    if not isinstance(share, (int, float)):
+        share = position.get("share_at_creation_pct")
+    share_text = f"{share:.1f}%" if isinstance(share, (int, float)) else "part"
+    base = position.get("base_rate") if isinstance(position.get("base_rate"), dict) else {}
+    hour = base.get("exit_within_1h")
+    rate_text = (
+        f" In our data, {round(100 * hour)} of every 100 creators who held a position like this sold it within the first hour."
+        if isinstance(hour, (int, float)) else ""
+    )
+    if position.get("status") == "sold":
+        sold = position.get("sold_pct_of_peak")
+        sold_text = f"{sold:.0f}%" if isinstance(sold, (int, float)) else "nearly all"
+        return (
+            f"The creator bought {share_text} of the supply when the token was created and "
+            f"sold {sold_text} of it {_duration(position.get('sold_after_seconds'))}. "
+            f"That exit already happened; it is a finding about this token, read from chain.{rate_text}"
+        )
+    return (
+        f"The creator bought {share_text} of the supply when the token was created and still "
+        f"holds it. Nothing stops them from selling it into the buyers.{rate_text}"
+    )
 
 
 def _history_sentence(history: dict[str, Any]) -> str:
@@ -109,11 +152,16 @@ def _history_sentence(history: dict[str, Any]) -> str:
 
 
 def _finding_sentence(
-    label: str, flags: list[str], history: dict[str, Any] | None = None
+    label: str, flags: list[str], history: dict[str, Any] | None = None,
+    position: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
     """The headline, and which of the three kinds it is."""
     if "rugcheck_flagged_rugged" in flags:
         return "The upstream report marks this token as already rugged.", FINDING
+    # The creator's own position outranks everything below it: it is about this
+    # token, read from chain, and it is either a dump ahead or one that happened.
+    if any(flag in POSITION_FLAGS for flag in flags):
+        return _position_sentence(position or {}), FINDING
     # A deployer with rugs on record outranks a refusal: the refusal says we
     # found nothing to clear the token with, and this says we found something.
     if any(flag in HISTORY_FLAGS for flag in flags):
@@ -158,8 +206,9 @@ def describe(payload: dict[str, Any]) -> dict[str, Any]:
     flags = [str(flag) for flag in (payload.get("risk_flags") or [])]
     evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
     history = payload.get("deployer_history") if isinstance(payload.get("deployer_history"), dict) else None
+    position = payload.get("creator_position") if isinstance(payload.get("creator_position"), dict) else None
 
-    summary, kind = _finding_sentence(label, flags, history)
+    summary, kind = _finding_sentence(label, flags, history, position)
     gaps = not_established(evidence)
 
     # Only a GAP earns the reassuring clause. A refusal to clear must never be

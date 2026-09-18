@@ -1,0 +1,19 @@
+2026-09-18 creator position on the golden set's confirmed rugs (live path, RugCheck + Helius, read-only)
+  23dxgqAt  creator=sold      peak_share=0.528    before=WARN  after=WARN
+  3FpBvhnA  creator=sold      peak_share=0.353    before=WARN  after=WARN
+  3TByinjH  creator=sold      peak_share=2.094    before=WARN  after=WARN
+  3ZuZXv2g  creator=sold      peak_share=0.7      before=WARN  after=WARN
+  3n1Zy2pj  creator=holding   peak_share=13.039   before=DANGER after=DANGER
+  6ML7tXmH  creator=sold      peak_share=0.355    before=WARN  after=WARN
+  6vpuYc1J  creator=sold      peak_share=0.22     before=WARN  after=WARN
+  74nxamVT  creator=sold      peak_share=0.353    before=WARN  after=WARN
+  7p7ZMhih  creator=sold      peak_share=0.618    before=WARN  after=WARN
+  AShmQtSB  creator=sold      peak_share=0.004    before=WARN  after=WARN
+  AyerU4ud  creator=sold      peak_share=0.141    before=WARN  after=WARN
+  BiHqVnZi  creator=sold      peak_share=15.329   before=WARN  after=DANGER
+  CHMfiUmZ  creator=sold      peak_share=2.707    before=WARN  after=WARN
+  CXRhJrBc  creator=sold      peak_share=1.754    before=WARN  after=WARN
+  ETWVkgQH  creator=sold      peak_share=0.357    before=WARN  after=WARN
+  HEoAb66v  creator=sold      peak_share=0.725    before=WARN  after=WARN
+  HoBvJJQx  creator=sold      peak_share=3.471    before=WARN  after=WARN
+before: {'WARN': 16, 'DANGER': 1}  after: {'WARN': 15, 'DANGER': 2}

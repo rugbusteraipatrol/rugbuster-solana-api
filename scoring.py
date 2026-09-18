@@ -150,6 +150,15 @@ CREATOR_RUG_RATE_HIGH_RISK = 85
 CREATOR_RUG_RATE_ELEVATED_RISK = 70
 CREATOR_PRIOR_RUGS_RISK = 70
 
+# The creator's own position, read from chain on the live path (see
+# creator_position.py for the study). A material allocation bought at creation
+# is a finding about this token: 97.6% of such creators sold it within 30 days
+# in our data, 88.9% within the hour. Floors, never caps.
+CREATOR_POSITION_MATERIAL_SHARE_PCT = 5.0
+CREATOR_POSITION_MINOR_SHARE_PCT = 1.0
+CREATOR_POSITION_MATERIAL_RISK = 75
+CREATOR_POSITION_MINOR_RISK = 60
+
 
 def deployer_history_from_record(record: dict[str, Any]) -> dict[str, Any] | None:
     """What a collector row says about this token's creator, if anything.
@@ -215,6 +224,35 @@ def apply_deployer_history(
         risk = max(risk, CREATOR_PRIOR_RUGS_RISK)
         flags.append("creator_history_of_rugged_tokens")
     return _clamp(risk), flags
+
+
+def apply_creator_position(
+    risk: int, flags: list[str], position: dict[str, Any] | None
+) -> tuple[int, list[str]]:
+    """The creator-position floors: what the creator bought at creation and
+    whether they still hold it. `holding` and `sold` are both findings -- one
+    says the dump is still ahead, the other that it already happened. A share
+    under 1% is reported and not scored; `none` and `unavailable` score as
+    nothing, and the evidence split lists the second as a gap."""
+    flags = list(flags)
+    if not isinstance(position, dict):
+        return _clamp(risk), flags
+    status = position.get("status")
+    share = _number(position.get("peak_share_pct"))
+    if share is None:
+        share = _number(position.get("share_at_creation_pct"))
+    if status not in {"holding", "sold"} or share is None or share < CREATOR_POSITION_MINOR_SHARE_PCT:
+        if status in {"holding", "sold"} and share is not None:
+            flags.append("creator_launch_allocation_negligible")
+        return _clamp(risk), flags
+    flags.append("creator_bought_at_creation")
+    flags.append("creator_holds_launch_allocation" if status == "holding" else "creator_sold_launch_allocation")
+    floor = (
+        CREATOR_POSITION_MATERIAL_RISK
+        if share >= CREATOR_POSITION_MATERIAL_SHARE_PCT
+        else CREATOR_POSITION_MINOR_RISK
+    )
+    return _clamp(max(risk, floor)), flags
 
 
 def label_for_risk(risk: int) -> str:
@@ -415,7 +453,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.10"
+SCORING_VERSION = "2026.09.18"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -505,6 +543,7 @@ IDENTITY_RISK_ITEMS = {
 # They must not be read as findings: counting one as a signal would let the act
 # of recording provenance change the verdict it records.
 EVIDENCE_NEUTRAL_FLAGS = {
+    "creator_launch_allocation_negligible",
     "verdict_from_stored_risk_percent",
     "verdict_recomputed_from_rugcheck_score",
     "verdict_recomputed_from_stored_evidence",
@@ -859,7 +898,9 @@ def live_report_supports_clean_verdict(report: dict[str, Any]) -> tuple[bool, st
 
 
 def score_live_rugcheck_report(
-    report: dict[str, Any], history: dict[str, Any] | None = None
+    report: dict[str, Any],
+    history: dict[str, Any] | None = None,
+    position: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a conservative baseline score from one live RugCheck report.
 
@@ -951,6 +992,9 @@ def score_live_rugcheck_report(
     # name, so it may carry a verdict past WARN where a disclosure alone could
     # not -- and it is applied before the ceilings so they can see it.
     risk, flags = apply_deployer_history(risk, flags, history)
+    # What the creator did with their own allocation, read from chain by the
+    # caller. Also a finding, also applied before the ceilings.
+    risk, flags = apply_creator_position(risk, flags, position)
 
     risk, flags = apply_verdict_ceilings(
         _clamp(risk), flags, rugged=rugged,

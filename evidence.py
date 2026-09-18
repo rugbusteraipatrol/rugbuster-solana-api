@@ -330,18 +330,56 @@ def coverage(payload: dict[str, Any], report: dict[str, Any] | None = None) -> d
     }
 
 
+def creator_position(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
+    """What the creator bought when they made the token, and whether they still
+    hold it. Read from chain on the live path (see creator_position.py). A
+    stored collector row never carries it, and a failed lookup is reported as
+    a gap, not as an empty position."""
+    position = payload.get("creator_position")
+    if not isinstance(position, dict) or position.get("status") in {None, "unavailable"}:
+        reason = position.get("reason") if isinstance(position, dict) else None
+        return {
+            "status": NOT_COLLECTED,
+            "creator": position.get("creator") if isinstance(position, dict) else None,
+            "reason": reason,
+            "note": (
+                "The creator's own position in this token was not read. Absent "
+                "coverage, not an absent position."
+            ),
+        }
+    return {
+        "status": OK,
+        "creator": position.get("creator"),
+        "position": position.get("status"),
+        "share_at_creation_pct": position.get("share_at_creation_pct"),
+        "peak_share_pct": position.get("peak_share_pct"),
+        "current_share_pct": position.get("current_share_pct"),
+        "sold_pct_of_peak": position.get("sold_pct_of_peak"),
+        "sold_after_seconds": position.get("sold_after_seconds"),
+        "observed_at": position.get("observed_at"),
+        "source": position.get("source"),
+        "base_rate": position.get("base_rate"),
+        "note": (
+            "The creator's own wallet only. Side wallets funded by the creator "
+            "are not traced here, so 'none' means this wallet never held the "
+            "token, not that nobody connected to the creator did."
+        ),
+    }
+
+
 DIMENSIONS = {
     "technical_controls": technical_controls,
     "distribution": distribution,
     "market": market,
     "issuer_identity": issuer_identity,
     "creator_history": creator_history,
+    "creator_position": creator_position,
     "coverage": coverage,
 }
 
 
 def build_evidence(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The six dimensions, each derived only from its own inputs.
+    """The seven dimensions, each derived only from its own inputs.
 
     `report` is the raw upstream response where the caller has one. Without it
     the market and account-level readings are UNKNOWN rather than inferred from

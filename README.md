@@ -19,6 +19,17 @@ and rate limits return `UNKNOWN`; they never become a false `GOOD` result.
 The API never writes to or alters `solana_scans`. Its only writes are live
 baseline results in the separate `solana_live_cache` table.
 
+
+## Creator position (live path, since 2026.09.18)
+
+For a live scan the API reads the creator's own position from chain: the share
+bought when the token was created, and whether it is still held or already
+sold. A material allocation (>= 5%) floors the verdict at DANGER, 1–5% at WARN;
+the response says which and quotes the base rate it rests on (97.6% of such
+creators sold within 30 days in our 9,170-token study). Requires
+`SOLANA_RPC_URL`; without it the dimension is reported as not collected. See
+SCORING.md.
+
 ## Local development
 
 ```bash

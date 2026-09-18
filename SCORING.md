@@ -103,3 +103,42 @@ dimension stays NOT_COLLECTED.
 RugCheck HTTP errors, 429 responses, timeouts, malformed JSON, or cache setup
 failure return `UNKNOWN` with a null risk score and source
 `live_scan_unavailable`. They never return GOOD.
+
+## Creator position at creation (2026.09.18)
+
+On the live path the service now reads the creator's own position in the
+token from chain (`creator_position.py`): the share bought in the transaction
+that created the token, and whether it is still held or already sold. The
+read costs four to six RPC calls on the creator's associated token account
+(legacy SPL, then Token-2022) and runs only when `SOLANA_RPC_URL` is set;
+without it the dimension is reported as `NOT_COLLECTED` and the verdict is
+unchanged.
+
+Why this rule exists. We labelled 9,170 of our own scans (May–Aug 2026) by
+what happened on-chain afterwards. Among traded tokens where the creator held
+at least 1% of supply (n = 2,785), the creator sold 95% or more of it within
+30 days in 97.6% of cases and within the first hour in 88.9%. The rules in
+force at the time called 1,346 of those tokens GOOD. The position is visible
+before anyone else can buy, so it belongs on the live path.
+
+Floors, applied before the verdict ceilings (they are findings, so they may
+carry a verdict past WARN):
+
+| creator's peak share | holding | sold (>= 95% of peak gone) |
+|---|---|---|
+| >= 5% | risk >= 75, `creator_holds_launch_allocation` | risk >= 75, `creator_sold_launch_allocation` |
+| 1% – 5% | risk >= 60, same flag | risk >= 60, same flag |
+| < 1% | `creator_launch_allocation_negligible` (evidence-neutral, no floor) | same |
+| never held / unavailable | no change; `unavailable` is listed under `not_established` | |
+
+`creator_bought_at_creation` accompanies either floor. The response carries
+`creator_position` with the numbers, the observation time and the base rate
+the floor rests on, and the evidence split gains a `creator_position`
+dimension. Only the creator's own wallet is read: side wallets are not
+traced here, so `none` means this wallet never held the token.
+
+Golden set, live path, 2026-09-18 (`qa/2026-09-18-creator-position.txt`): the
+17 confirmed creator dumps stay not-GOOD; one moves from WARN to DANGER on a
+15% exit. Thirteen of the seventeen creators held under 1% of supply, which
+this rule deliberately does not score: the benchmark's ground truth was
+"sold >= 95% of whatever they held", not "held a material share".

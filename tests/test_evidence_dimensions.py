@@ -248,9 +248,11 @@ def test_the_endpoint_carries_evidence_without_moving_the_verdict():
     assert body["risk_score"] == 55
     assert set(body["evidence"]) == {
         "technical_controls", "distribution", "market", "issuer_identity",
-        "creator_history", "coverage",
+        "creator_history", "creator_position", "coverage",
     }
     assert body["evidence"]["creator_history"]["status"] == NOT_COLLECTED
+    # A stored collector row never carries the creator's position.
+    assert body["evidence"]["creator_position"]["status"] == NOT_COLLECTED
     assert body["evidence"]["coverage"]["data_freshness"] == "FRESH"
 
 

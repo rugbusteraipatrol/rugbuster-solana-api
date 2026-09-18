@@ -22,6 +22,7 @@ from freshness import (
     now_utc,
     withhold_verdict,
 )
+import creator_position as creator_position_module
 from scoring import (
     SCORING_VERSION,
     apply_deployer_history,
@@ -116,6 +117,8 @@ def ensure_live_cache_schema() -> None:
                       ON solana_live_cache (contract_address, created_at DESC);
                     ALTER TABLE solana_live_cache
                       ADD COLUMN IF NOT EXISTS scoring_version TEXT NOT NULL DEFAULT 'pre-2026.09.1';
+                    ALTER TABLE solana_live_cache
+                      ADD COLUMN IF NOT EXISTS creator_position JSONB;
                     """
                 )
         _schema_ready = True
@@ -127,7 +130,7 @@ def fetch_live_cache(address: str) -> dict[str, Any] | None:
             cursor.execute(
                 """
                 SELECT contract_address, risk_score, label, rugcheck_score,
-                       risk_flags, token_name, token_symbol, created_at
+                       risk_flags, token_name, token_symbol, created_at, creator_position
                 FROM solana_live_cache
                 WHERE contract_address = %s
                   AND created_at >= now() - interval '1 hour'
@@ -148,8 +151,9 @@ def insert_live_cache(address: str, result: dict[str, Any], raw_response: dict[s
                 """
                 INSERT INTO solana_live_cache (
                     contract_address, source, risk_score, label, rugcheck_score,
-                    risk_flags, raw_response, token_name, token_symbol, scoring_version
-                ) VALUES (%s, 'live_rugcheck', %s, %s, %s, %s, %s, %s, %s, %s)
+                    risk_flags, raw_response, token_name, token_symbol, scoring_version,
+                    creator_position
+                ) VALUES (%s, 'live_rugcheck', %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     address,
@@ -161,6 +165,7 @@ def insert_live_cache(address: str, result: dict[str, Any], raw_response: dict[s
                     result.get("token_name"),
                     result.get("token_symbol"),
                     SCORING_VERSION,
+                    Json(result["creator_position"]) if isinstance(result.get("creator_position"), dict) else None,
                 ),
             )
 
@@ -317,7 +322,9 @@ def refresh_stale_record(
     if report is None:
         return None
 
-    live = score_live_rugcheck_report(report, history=history)
+    position = creator_position_module.from_report(report)
+    live = score_live_rugcheck_report(report, history=history, position=position)
+    live["creator_position"] = position
     try:
         insert_live_cache(address, live, report)
     except Exception:
@@ -383,6 +390,12 @@ def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
     # stays null, because the report it came from never carried one.
     state = assess(row.get("created_at"), max_age=LIVE_CACHE_MAX_AGE)
     retrieved_at = state["observed_at"]
+    position = row.get("creator_position")
+    if isinstance(position, str):
+        try:
+            position = json.loads(position)
+        except json.JSONDecodeError:
+            position = None
     result = with_identity({
         "ok": True,
         "address": row.get("contract_address") or address,
@@ -407,6 +420,9 @@ def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
             "timestamp. retrieval_age_seconds is the age of our copy, not of "
             "the evidence."
         ),
+        # The position stored with the row, placed before the evidence split
+        # is built so the split can see it.
+        **({"creator_position": position} if isinstance(position, dict) else {}),
     })
     if is_servable_as_current(state):
         return result
@@ -486,7 +502,9 @@ def score():
         if report is None:
             return jsonify(cache_miss_response(address, "live_scan_unavailable"))
 
-        result = score_live_rugcheck_report(report)
+        position = creator_position_module.from_report(report)
+        result = score_live_rugcheck_report(report, position=position)
+        result["creator_position"] = position
         _live_observed = now_utc().isoformat()
         try:
             insert_live_cache(address, result, report)
