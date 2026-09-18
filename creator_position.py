@@ -46,7 +46,7 @@ BASE_RATE = {
     "exit_within_1h": 0.889,
     "exit_within_30d": 0.976,
     "population": "traded tokens where the creator held >= 1% of supply, May-Aug 2026",
-    "study": "rugbuster-solana-outcomes (publication pending)",
+    "study": "https://github.com/rugbusteraipatrol/rugbuster-solana-outcomes",
 }
 MATERIAL_SHARE_PCT = 5.0
 MINOR_SHARE_PCT = 1.0

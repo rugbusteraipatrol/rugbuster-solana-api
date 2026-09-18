@@ -134,7 +134,7 @@ carry a verdict past WARN):
 `creator_bought_at_creation` accompanies either floor. The response carries
 `creator_position` with the numbers, the observation time and the base rate
 the floor rests on, and the evidence split gains a `creator_position`
-dimension. Only the creator's own wallet is read: side wallets are not
+dimension. The study and its data: https://github.com/rugbusteraipatrol/rugbuster-solana-outcomes. Only the creator's own wallet is read: side wallets are not
 traced here, so `none` means this wallet never held the token.
 
 Golden set, live path, 2026-09-18 (`qa/2026-09-18-creator-position.txt`): the
