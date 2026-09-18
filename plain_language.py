@@ -124,9 +124,13 @@ def _position_sentence(position: dict[str, Any]) -> str:
     if position.get("status") == "sold":
         sold = position.get("sold_pct_of_peak")
         sold_text = f"{sold:.0f}%" if isinstance(sold, (int, float)) else "nearly all"
+        seconds = position.get("sold_after_seconds")
+        when = _duration(seconds)
+        if position.get("sold_after_is_upper_bound") and isinstance(seconds, (int, float)):
+            when = f"within {when[:-len(' later')]}" if when.endswith(" later") else when
         return (
             f"The creator bought {share_text} of the supply when the token was created and "
-            f"sold {sold_text} of it {_duration(position.get('sold_after_seconds'))}. "
+            f"sold {sold_text} of it {when}. "
             f"That exit already happened; it is a finding about this token, read from chain.{rate_text}"
         )
     return (

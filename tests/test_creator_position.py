@@ -128,7 +128,7 @@ def test_an_instant_exit_is_read_as_sold_with_its_timing():
     assert got["share_at_creation_pct"] == 12.0
     assert got["current_share_pct"] == 0.0
     assert got["sold_pct_of_peak"] == 100.0
-    assert got["sold_after_seconds"] == 50
+    assert got["sold_after_seconds"] == 46  # the sale, not the account close at 1050
     assert got["token_program"] == "token2022"
     assert got["base_rate"]["n"] == 2785
     # both programs' accounts are asked before giving up, only one answered
@@ -266,3 +266,27 @@ def test_a_cached_live_row_carries_its_stored_position():
     assert body["creator_position"]["status"] == "sold"
     assert body["evidence"]["creator_position"]["status"] == OK
     assert "bought 9.6%" in body["verdict_summary"]
+
+
+def test_the_exit_time_is_the_sale_not_the_last_account_activity():
+    # Sold 3 s after creation; a dust transfer and the close come 13 days later.
+    call = fake_rpc({"create": (1000, 112_000_000.0), "sell": (1003, 0.0),
+                     "dust": (1000 + 13 * 86400, 0.0), "close": (1000 + 13 * 86400 + 5, None)})
+    got = cp.lookup(CREATOR, MINT, SUPPLY, call)
+    assert got["status"] == "sold"
+    assert got["sold_after_seconds"] == 3
+    assert got["sold_after_is_upper_bound"] is False
+
+
+def test_an_exit_hidden_between_unread_transactions_is_an_upper_bound():
+    # Ten transactions; only the first two and last two are read. The creator
+    # still held after the second, and had sold by the ninth.
+    hist = {"t%d" % i: (1000 + i * 3600, 50_000_000.0 if i < 5 else 0.0) for i in range(10)}
+    got = cp.lookup(CREATOR, MINT, SUPPLY, fake_rpc(hist))
+    assert got["status"] == "sold"
+    assert got["sold_after_seconds"] == 8 * 3600
+    assert got["sold_after_is_upper_bound"] is True
+    payload = {"label": "DANGER", "risk_flags": ["creator_bought_at_creation", "creator_sold_launch_allocation"],
+               "creator_position": got}
+    payload["evidence"] = build_evidence(payload)
+    assert "sold 100% of it within 8 hours." in describe(payload)["verdict_summary"]
