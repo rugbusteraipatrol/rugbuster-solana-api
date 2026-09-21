@@ -159,6 +159,11 @@ CREATOR_POSITION_MINOR_SHARE_PCT = 1.0
 CREATOR_POSITION_MATERIAL_RISK = 75
 CREATOR_POSITION_MINOR_RISK = 60
 
+# A launch taken by three or more wallets within 5 seconds of creation (see
+# launch_snipe.py). A disclosure about the first seconds, not proof of harm:
+# it floors the verdict at WARN and, on its own, may not carry it past WARN.
+LAUNCH_SNIPED_RISK = 60
+
 
 def deployer_history_from_record(record: dict[str, Any]) -> dict[str, Any] | None:
     """What a collector row says about this token's creator, if anything.
@@ -253,6 +258,19 @@ def apply_creator_position(
         else CREATOR_POSITION_MINOR_RISK
     )
     return _clamp(max(risk, floor)), flags
+
+
+def apply_launch_snipe(
+    risk: int, flags: list[str], snipe: dict[str, Any] | None
+) -> tuple[int, list[str]]:
+    """The launch-snipe floor. `sniped` means three or more distinct wallets
+    first held the token within 5 seconds of its creation. `clean`, `unavailable`
+    and a missing read all score as nothing; the evidence split reports which."""
+    flags = list(flags)
+    if not isinstance(snipe, dict) or snipe.get("status") != "sniped":
+        return _clamp(risk), flags
+    flags.append("launch_sniped_by_bots")
+    return _clamp(max(risk, LAUNCH_SNIPED_RISK)), flags
 
 
 def label_for_risk(risk: int) -> str:
@@ -453,7 +471,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.18"
+SCORING_VERSION = "2026.09.22"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -523,7 +541,10 @@ DISTRIBUTION_RISK_ITEMS = {
     "single_holder_ownership",
     "top_10_holders_high_ownership",
 }
-NON_CONCLUSIVE_RISK_ITEMS = ADMINISTRATIVE_RISK_ITEMS | DISTRIBUTION_RISK_ITEMS
+# Read from the launch's first seconds. Who got in first is a disclosure
+# about the launch, like a holder table; it says nothing about intent.
+LAUNCH_RISK_ITEMS = {"launch_sniped_by_bots"}
+NON_CONCLUSIVE_RISK_ITEMS = ADMINISTRATIVE_RISK_ITEMS | DISTRIBUTION_RISK_ITEMS | LAUNCH_RISK_ITEMS
 MAX_NON_CONCLUSIVE_RISK = 69
 
 # A symbol collision says the address is not the curated asset a user could
@@ -901,6 +922,7 @@ def score_live_rugcheck_report(
     report: dict[str, Any],
     history: dict[str, Any] | None = None,
     position: dict[str, Any] | None = None,
+    snipe: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a conservative baseline score from one live RugCheck report.
 
@@ -995,6 +1017,9 @@ def score_live_rugcheck_report(
     # What the creator did with their own allocation, read from chain by the
     # caller. Also a finding, also applied before the ceilings.
     risk, flags = apply_creator_position(risk, flags, position)
+    # Who bought in the first seconds. A disclosure, capped by the ceilings
+    # below unless something independent (a creator exit, a history) is there.
+    risk, flags = apply_launch_snipe(risk, flags, snipe)
 
     risk, flags = apply_verdict_ceilings(
         _clamp(risk), flags, rugged=rugged,

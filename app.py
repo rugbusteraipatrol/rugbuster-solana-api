@@ -23,6 +23,7 @@ from freshness import (
     withhold_verdict,
 )
 import creator_position as creator_position_module
+import launch_snipe as launch_snipe_module
 from scoring import (
     SCORING_VERSION,
     apply_deployer_history,
@@ -119,6 +120,8 @@ def ensure_live_cache_schema() -> None:
                       ADD COLUMN IF NOT EXISTS scoring_version TEXT NOT NULL DEFAULT 'pre-2026.09.1';
                     ALTER TABLE solana_live_cache
                       ADD COLUMN IF NOT EXISTS creator_position JSONB;
+                    ALTER TABLE solana_live_cache
+                      ADD COLUMN IF NOT EXISTS launch_snipe JSONB;
                     """
                 )
         _schema_ready = True
@@ -130,7 +133,7 @@ def fetch_live_cache(address: str) -> dict[str, Any] | None:
             cursor.execute(
                 """
                 SELECT contract_address, risk_score, label, rugcheck_score,
-                       risk_flags, token_name, token_symbol, created_at, creator_position
+                       risk_flags, token_name, token_symbol, created_at, creator_position, launch_snipe
                 FROM solana_live_cache
                 WHERE contract_address = %s
                   AND created_at >= now() - interval '1 hour'
@@ -152,8 +155,8 @@ def insert_live_cache(address: str, result: dict[str, Any], raw_response: dict[s
                 INSERT INTO solana_live_cache (
                     contract_address, source, risk_score, label, rugcheck_score,
                     risk_flags, raw_response, token_name, token_symbol, scoring_version,
-                    creator_position
-                ) VALUES (%s, 'live_rugcheck', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    creator_position, launch_snipe
+                ) VALUES (%s, 'live_rugcheck', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     address,
@@ -166,6 +169,7 @@ def insert_live_cache(address: str, result: dict[str, Any], raw_response: dict[s
                     result.get("token_symbol"),
                     SCORING_VERSION,
                     Json(result["creator_position"]) if isinstance(result.get("creator_position"), dict) else None,
+                    Json(result["launch_snipe"]) if isinstance(result.get("launch_snipe"), dict) else None,
                 ),
             )
 
@@ -323,8 +327,10 @@ def refresh_stale_record(
         return None
 
     position = creator_position_module.from_report(report)
-    live = score_live_rugcheck_report(report, history=history, position=position)
+    snipe = launch_snipe_module.from_report(report)
+    live = score_live_rugcheck_report(report, history=history, position=position, snipe=snipe)
     live["creator_position"] = position
+    live["launch_snipe"] = snipe
     try:
         insert_live_cache(address, live, report)
     except Exception:
@@ -369,6 +375,15 @@ def cache_miss_response(address: str, source: str = "cache_miss") -> dict[str, A
     })
 
 
+def _json_column(value: Any) -> Any:
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    return value
+
+
 def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
     """A stored live verdict, aged the same way a collector row is.
 
@@ -390,12 +405,8 @@ def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
     # stays null, because the report it came from never carried one.
     state = assess(row.get("created_at"), max_age=LIVE_CACHE_MAX_AGE)
     retrieved_at = state["observed_at"]
-    position = row.get("creator_position")
-    if isinstance(position, str):
-        try:
-            position = json.loads(position)
-        except json.JSONDecodeError:
-            position = None
+    position = _json_column(row.get("creator_position"))
+    snipe = _json_column(row.get("launch_snipe"))
     result = with_identity({
         "ok": True,
         "address": row.get("contract_address") or address,
@@ -423,6 +434,7 @@ def live_cache_result(row: dict[str, Any], address: str) -> dict[str, Any]:
         # The position stored with the row, placed before the evidence split
         # is built so the split can see it.
         **({"creator_position": position} if isinstance(position, dict) else {}),
+        **({"launch_snipe": snipe} if isinstance(snipe, dict) else {}),
     })
     if is_servable_as_current(state):
         return result
@@ -503,8 +515,10 @@ def score():
             return jsonify(cache_miss_response(address, "live_scan_unavailable"))
 
         position = creator_position_module.from_report(report)
-        result = score_live_rugcheck_report(report, position=position)
+        snipe = launch_snipe_module.from_report(report)
+        result = score_live_rugcheck_report(report, position=position, snipe=snipe)
         result["creator_position"] = position
+        result["launch_snipe"] = snipe
         _live_observed = now_utc().isoformat()
         try:
             insert_live_cache(address, result, report)

@@ -30,6 +30,14 @@ creators sold within 30 days in our 9,170-token study). Requires
 `SOLANA_RPC_URL`; without it the dimension is reported as not collected. See
 SCORING.md.
 
+
+## Launch snipe (live path, since 2026.09.22)
+
+The API also reads who first held the token within 5 seconds of its creation.
+Three or more wallets there means the launch was taken by bots before a person
+could act: `launch_sniped_by_bots`, WARN floor, never DANGER on its own. In our
+study 163 of 300 such launches looked like this. See SCORING.md.
+
 ## Local development
 
 ```bash

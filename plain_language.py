@@ -82,6 +82,10 @@ def not_established(evidence: dict[str, Any]) -> list[str]:
     if str(position.get("status") or "").upper() != "OK":
         gaps.append("what the creator did with their own allocation")
 
+    launch = _dimension(evidence, "launch")
+    if str(launch.get("status") or "").upper() != "OK":
+        gaps.append("who bought in the first seconds after creation")
+
     seen: set[str] = set()
     return [gap for gap in gaps if not (gap in seen or seen.add(gap))]
 
@@ -95,6 +99,24 @@ FINDING, REFUSAL, GAP = "FINDING", "REFUSAL", "GAP"
 
 HISTORY_FLAGS = {"creator_history_of_rugged_tokens", "creator_rug_rate_high", "creator_rug_rate_elevated"}
 POSITION_FLAGS = {"creator_holds_launch_allocation", "creator_sold_launch_allocation"}
+
+
+def _snipe_sentence(snipe: dict[str, Any]) -> str:
+    n = snipe.get("buyers_within_window")
+    bots = snipe.get("bot_wallets_among_checked")
+    checked = snipe.get("wallets_checked")
+    window = snipe.get("window_seconds") or 5
+    if isinstance(n, int):
+        head = f"{n} wallets bought within {window} seconds of this token's creation"
+    else:
+        head = "Several wallets bought within seconds of this token's creation"
+    bot_text = ""
+    if isinstance(bots, int) and isinstance(checked, int) and checked:
+        bot_text = f"; {bots} of the {checked} checked are high-frequency bot wallets"
+    return (
+        f"{head}{bot_text}. The first sellers were positioned before a person could "
+        "act. That is a fact about the launch, not proof of intent."
+    )
 
 
 def _duration(seconds: Any) -> str:
@@ -157,7 +179,7 @@ def _history_sentence(history: dict[str, Any]) -> str:
 
 def _finding_sentence(
     label: str, flags: list[str], history: dict[str, Any] | None = None,
-    position: dict[str, Any] | None = None,
+    position: dict[str, Any] | None = None, snipe: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
     """The headline, and which of the three kinds it is."""
     if "rugcheck_flagged_rugged" in flags:
@@ -166,6 +188,8 @@ def _finding_sentence(
     # token, read from chain, and it is either a dump ahead or one that happened.
     if any(flag in POSITION_FLAGS for flag in flags):
         return _position_sentence(position or {}), FINDING
+    if "launch_sniped_by_bots" in flags and not any(flag in HISTORY_FLAGS for flag in flags):
+        return _snipe_sentence(snipe or {}), FINDING
     # A deployer with rugs on record outranks a refusal: the refusal says we
     # found nothing to clear the token with, and this says we found something.
     if any(flag in HISTORY_FLAGS for flag in flags):
@@ -211,8 +235,9 @@ def describe(payload: dict[str, Any]) -> dict[str, Any]:
     evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
     history = payload.get("deployer_history") if isinstance(payload.get("deployer_history"), dict) else None
     position = payload.get("creator_position") if isinstance(payload.get("creator_position"), dict) else None
+    snipe = payload.get("launch_snipe") if isinstance(payload.get("launch_snipe"), dict) else None
 
-    summary, kind = _finding_sentence(label, flags, history, position)
+    summary, kind = _finding_sentence(label, flags, history, position, snipe)
     gaps = not_established(evidence)
 
     # Only a GAP earns the reassuring clause. A refusal to clear must never be

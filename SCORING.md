@@ -142,3 +142,29 @@ Golden set, live path, 2026-09-18 (`qa/2026-09-18-creator-position.txt`): the
 15% exit. Thirteen of the seventeen creators held under 1% of supply, which
 this rule deliberately does not score: the benchmark's ground truth was
 "sold >= 95% of whatever they held", not "held a material share".
+
+## Launch snipe (2026.09.22)
+
+On the live path the service now reads the token's first seconds
+(`launch_snipe.py`): the distinct wallets that first held the token within 5
+seconds of its creation, the creator and the pool account excluded, and for up
+to five of them whether the wallet is a high-frequency bot (1,000+ transactions
+on record). Two to about fourteen RPC calls; runs only with `SOLANA_RPC_URL`.
+
+Why. In the outcome study, of 300 traded launches whose creator wallet never
+held the token, 163 had three or more wallets buying within 5 seconds of
+creation, and 670 of the 1,226 early buyers were bot wallets. Those launches are
+taken before a person can act, and the first sellers are already positioned
+when later buyers arrive. Our rules had called 183 of those 300 GOOD.
+
+Effect: `sniped` (three or more buyers within the window) adds
+`launch_sniped_by_bots` and floors the risk at 60 (WARN). The flag is a
+disclosure (in `LAUNCH_RISK_ITEMS`, part of the non-conclusive set): on its own
+it cannot carry a verdict past WARN, because we have no outcome measurement for
+buyers who arrive after the bots. With an independent finding, such as a
+creator exit, DANGER is possible as before. `clean` and `unavailable` score as
+nothing; `unavailable` is listed under `not_established`. A token with more
+than 1,000 transactions is beyond the readable window and reports `unavailable`.
+The response carries `launch_snipe` and the evidence split gains a `launch`
+dimension. The headline sentence names the count and the bots; a creator
+position, when present, outranks it.

@@ -367,6 +367,36 @@ def creator_position(payload: dict[str, Any], report: dict[str, Any] | None = No
     }
 
 
+def launch(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Who first held the token in the seconds after its creation. Read from
+    chain on the live path (see launch_snipe.py); a stored collector row never
+    carries it, and a token older than its readable window is a gap."""
+    snipe = payload.get("launch_snipe")
+    if not isinstance(snipe, dict) or snipe.get("status") in {None, "unavailable"}:
+        return {
+            "status": NOT_COLLECTED,
+            "reason": snipe.get("reason") if isinstance(snipe, dict) else None,
+            "note": "The launch's first seconds were not read. Absent coverage, not a clean launch.",
+        }
+    return {
+        "status": OK,
+        "launch": snipe.get("status"),
+        "buyers_within_window": snipe.get("buyers_within_window"),
+        "window_seconds": snipe.get("window_seconds"),
+        "bot_wallets_among_checked": snipe.get("bot_wallets_among_checked"),
+        "wallets_checked": snipe.get("wallets_checked"),
+        "creation_time": snipe.get("creation_time"),
+        "observed_at": snipe.get("observed_at"),
+        "source": snipe.get("source"),
+        "study": snipe.get("study"),
+        "note": (
+            "Distinct wallets that first held the token within the window after "
+            "creation, the creator and the pool account excluded. A bot wallet is "
+            "one with over 1,000 transactions on record."
+        ),
+    }
+
+
 DIMENSIONS = {
     "technical_controls": technical_controls,
     "distribution": distribution,
@@ -374,12 +404,13 @@ DIMENSIONS = {
     "issuer_identity": issuer_identity,
     "creator_history": creator_history,
     "creator_position": creator_position,
+    "launch": launch,
     "coverage": coverage,
 }
 
 
 def build_evidence(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The seven dimensions, each derived only from its own inputs.
+    """The eight dimensions, each derived only from its own inputs.
 
     `report` is the raw upstream response where the caller has one. Without it
     the market and account-level readings are UNKNOWN rather than inferred from
