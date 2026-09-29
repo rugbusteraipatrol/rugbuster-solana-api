@@ -185,3 +185,43 @@ def test_no_rpc_means_no_chain_checks(monkeypatch):
     payload = {"label": "GOOD", "address": MINT}
     api.attach_chain_checks(payload)
     assert "chain_checks" not in payload
+
+
+def test_a_failed_reading_is_not_cached():
+    calls = {"n": 0}
+
+    def flaky(method, params):
+        calls["n"] += 1
+        raise RuntimeError("HTTP Error 429: Too Many Requests")
+
+    chain_checks._cache.clear()
+    chain_checks.run(MINT, None, call=flaky)
+    first = calls["n"]
+    chain_checks.run(MINT, None, call=flaky)
+    assert calls["n"] > first, "the second request must ask the chain again"
+
+
+def test_rpc_post_retries_a_rate_limit(monkeypatch):
+    import io
+    import rpc_http
+    from urllib.error import HTTPError
+
+    attempts = {"n": 0}
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(request, timeout):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise HTTPError(request.full_url, 429, "Too Many Requests", {}, None)
+        return Response(b'{"result": 42}')
+
+    monkeypatch.setattr(rpc_http, "urlopen", fake_urlopen)
+    monkeypatch.setattr(rpc_http, "RETRY_DELAYS_SECONDS", (0, 0))
+    assert rpc_http.rpc_post("https://rpc.example", "getSlot", [], 1) == 42
+    assert attempts["n"] == 3

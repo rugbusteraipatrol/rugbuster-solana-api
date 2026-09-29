@@ -24,7 +24,9 @@ import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen  # noqa: F401 -- kept for callers that patch it
+
+from rpc_http import rpc_post
 
 RPC_TIMEOUT_SECONDS = 4
 WINDOW_SECONDS = 5            # "the first seconds": same window as the study
@@ -50,13 +52,7 @@ def rpc_url() -> str | None:
 
 
 def _rpc_call(url: str, method: str, params: list[Any]) -> Any:
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
-    request = Request(url, data=body, headers={"Content-Type": "application/json"})
-    with urlopen(request, timeout=RPC_TIMEOUT_SECONDS) as response:
-        payload = json.loads(response.read())
-    if "error" in payload:
-        raise RuntimeError(str(payload["error"])[:120])
-    return payload.get("result")
+    return rpc_post(url, method, params, RPC_TIMEOUT_SECONDS)
 
 
 def _balances(tx: dict[str, Any], mint: str) -> tuple[dict[str, float], dict[str, float]]:

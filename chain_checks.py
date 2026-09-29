@@ -27,9 +27,8 @@ import json
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
-from urllib.request import Request, urlopen
+from rpc_http import rpc_post
 
 RPC_TIMEOUT_SECONDS = 4
 CACHE_TTL_SECONDS = 600
@@ -51,13 +50,7 @@ def rpc_url() -> str | None:
 
 def _rpc(url: str) -> Call:
     def call(method: str, params: list[Any] | dict[str, Any]) -> Any:
-        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
-        request = Request(url, data=body, headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=RPC_TIMEOUT_SECONDS) as response:
-            payload = json.loads(response.read())
-        if "error" in payload:
-            raise RuntimeError(str(payload["error"])[:120])
-        return payload.get("result")
+        return rpc_post(url, method, params, RPC_TIMEOUT_SECONDS)
 
     return call
 
@@ -293,28 +286,31 @@ def run(mint: str, creator: str | None = None, created_at: Any = None, call: Cal
         if hit and now - hit[0] < CACHE_TTL_SECONDS:
             return hit[1]
 
+    errored = False
+
     def safe(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+        nonlocal errored
         try:
             return fn()
         except Exception as exc:  # noqa: BLE001 -- one part failing must not fail the answer
+            errored = True
             return {"status": "unavailable", "reason": str(exc)[:120]}
 
+    # One after another, not in parallel: the same RPC also serves the launch
+    # and creator reads, and a burst is what draws its rate limit.
     started = time.time()
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        contract_f = pool.submit(safe, lambda: read_contract(call, mint))
-        holders_f = pool.submit(safe, lambda: read_holders(call, mint))
-        funding_f = pool.submit(safe, lambda: read_funding(call, creator, created_at))
-        result = {
-            "contract": contract_f.result(),
-            "holders": holders_f.result(),
-            "funding": funding_f.result(),
-        }
+    result = {
+        "contract": safe(lambda: read_contract(call, mint)),
+        "holders": safe(lambda: read_holders(call, mint)),
+        "funding": safe(lambda: read_funding(call, creator, created_at)),
+    }
     result["lookup_seconds"] = round(time.time() - started, 2)
     result["source"] = "solana_rpc"
     result["effect_on_verdict"] = "none -- informational"
 
-    with _cache_lock:
-        _cache[key] = (now, result)
-        if len(_cache) > 2000:
-            _cache.pop(next(iter(_cache)))
+    if not errored:  # a transient failure must not be served for ten minutes
+        with _cache_lock:
+            _cache[key] = (now, result)
+            if len(_cache) > 2000:
+                _cache.pop(next(iter(_cache)))
     return result
