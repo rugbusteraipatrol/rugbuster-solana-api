@@ -312,3 +312,25 @@ def test_shield_page_is_served(client):
     response = client.get("/shield")
     assert response.status_code == 200
     assert b"CREATOR" in response.data and b"/x402/score" in response.data
+
+
+def test_image_candidates_offer_several_ipfs_gateways():
+    cid = "bafybeie2x4had26jgahjj4icmvfiafnguq63ieu54dc3npi2hhpoon6rwy"
+    for url in (f"https://ipfs.io/ipfs/{cid}", f"ipfs://{cid}", f"ipfs://ipfs/{cid}"):
+        out = api.image_candidates(url)
+        assert len(out) == 3 and all(u.endswith(cid) for u in out)
+        assert out[0].startswith("https://gateway.pinata.cloud/ipfs/")
+    assert api.image_candidates("https://example.com/logo.png") == ["https://example.com/logo.png"]
+    assert api.image_candidates("http://insecure.example/logo.png") == []
+    assert api.image_candidates(None) == []
+
+
+def test_token_meta_rejects_bad_address(client):
+    assert client.get("/token-meta?address=nope").status_code == 400
+
+
+def test_token_meta_without_rpc_is_empty_not_an_error(client, monkeypatch):
+    monkeypatch.setattr(api, "SOLANA_RPC_URL", "")
+    api._token_meta_cache.clear()
+    body = client.get(f"/token-meta?address={MINT}").get_json()
+    assert body["ok"] is True and body["image"] is None and body["image_candidates"] == []

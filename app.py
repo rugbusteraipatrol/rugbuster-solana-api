@@ -469,6 +469,86 @@ def service_info():
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
 
+SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "").strip()
+IPFS_GATEWAYS = (
+    "https://gateway.pinata.cloud/ipfs/",
+    "https://ipfs.io/ipfs/",
+    "https://dweb.link/ipfs/",
+)
+_token_meta_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_token_meta_lock = threading.Lock()
+TOKEN_META_TTL_SECONDS = 6 * 3600
+
+
+def image_candidates(url: str | None) -> list[str]:
+    """Where a browser can try to load a token image, best first.
+
+    Metadata images mostly live on IPFS, and any one public gateway is often
+    slow or rate-limited, so the same CID is offered through several.
+    """
+    if not url or not isinstance(url, str):
+        return []
+    url = url.strip()
+    cid_path = None
+    if url.startswith("ipfs://"):
+        cid_path = url[len("ipfs://"):].lstrip("/")
+        if cid_path.startswith("ipfs/"):
+            cid_path = cid_path[len("ipfs/"):]
+    elif "/ipfs/" in url:
+        cid_path = url.split("/ipfs/", 1)[1]
+    if cid_path:
+        return [gateway + cid_path for gateway in IPFS_GATEWAYS]
+    return [url] if url.startswith("https://") else []
+
+
+def fetch_token_meta(address: str) -> dict[str, Any]:
+    """Name, symbol and image from the chain's metadata (Helius DAS getAsset)."""
+    now = time.time()
+    with _token_meta_lock:
+        hit = _token_meta_cache.get(address)
+        if hit and now - hit[0] < TOKEN_META_TTL_SECONDS:
+            return hit[1]
+    meta: dict[str, Any] = {"address": address, "image": None, "image_candidates": []}
+    if SOLANA_RPC_URL:
+        body = json.dumps(
+            {"jsonrpc": "2.0", "id": "meta", "method": "getAsset", "params": {"id": address}}
+        ).encode()
+        req = Request(SOLANA_RPC_URL, data=body, headers={"Content-Type": "application/json"})
+        try:
+            with urlopen(req, timeout=6) as response:
+                asset = (json.load(response) or {}).get("result") or {}
+            content = asset.get("content") or {}
+            links = content.get("links") or {}
+            files = content.get("files") or []
+            image = links.get("image") or (files[0].get("uri") if files else None)
+            info = content.get("metadata") or {}
+            meta.update(
+                {
+                    "name": info.get("name"),
+                    "symbol": info.get("symbol"),
+                    "image": image,
+                    "image_candidates": image_candidates(image),
+                }
+            )
+        except (HTTPError, URLError, TimeoutError, ValueError, OSError):
+            pass
+    with _token_meta_lock:
+        _token_meta_cache[address] = (now, meta)
+        if len(_token_meta_cache) > 2000:
+            _token_meta_cache.pop(next(iter(_token_meta_cache)))
+    return meta
+
+
+@app.get("/token-meta")
+def token_meta():
+    address = str(request.args.get("address") or "").strip()
+    if not is_valid_solana_mint(address):
+        return jsonify({"ok": False, "error": "invalid solana mint address"}), 400
+    response = jsonify({"ok": True, **fetch_token_meta(address)})
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
 @app.get("/shield")
 def shield_page():
     """Creator Trace: the browser front end for /score and /x402/score."""
