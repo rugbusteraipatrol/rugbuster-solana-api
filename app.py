@@ -23,6 +23,7 @@ from freshness import (
     now_utc,
     withhold_verdict,
 )
+import chain_checks
 import creator_position as creator_position_module
 import x402_solana
 import launch_snipe as launch_snipe_module
@@ -240,6 +241,24 @@ def _record_of(row: dict[str, Any]) -> dict[str, Any]:
     return record if isinstance(record, dict) else {}
 
 
+def attach_chain_checks(payload: dict[str, Any]) -> None:
+    """Contract, holders and funding read from chain (informational)."""
+    if "label" not in payload or "chain_checks" in payload:
+        return
+    address = payload.get("address")
+    if not isinstance(address, str) or not is_valid_solana_mint(address):
+        return
+    position = payload.get("creator_position") or {}
+    creator = position.get("creator") or (payload.get("deployer_history") or {}).get("creator")
+    created_at = (payload.get("launch_snipe") or {}).get("creation_time") or position.get("first_seen_at")
+    try:
+        checks = chain_checks.run(address, creator, created_at)
+    except Exception:  # noqa: BLE001 -- informational; never fail the answer
+        checks = None
+    if checks is not None:
+        payload["chain_checks"] = checks
+
+
 def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
     """Attach build provenance, and the evidence split, to any response.
 
@@ -254,6 +273,7 @@ def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None)
     """
     enriched = dict(payload)
     enriched.update(build_identity(SCORING_VERSION))
+    attach_chain_checks(enriched)
     if "label" in enriched:
         enriched["evidence"] = build_evidence(enriched, report)
         # A reader who stops at the top of the response should still be told
@@ -632,6 +652,7 @@ def score():
                 **build_identity(SCORING_VERSION),
             }
         )
+        attach_chain_checks(result)
         result["evidence"] = build_evidence(result, report)
         result.update(describe(result))
         return jsonify(result)

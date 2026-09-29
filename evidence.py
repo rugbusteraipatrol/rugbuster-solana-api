@@ -65,6 +65,10 @@ RAW_AUTHORITY_FIELDS = {
     "mintAuthority": "mint",
     "freezeAuthority": "freeze",
     "updateAuthority": "update",
+    # Token-2022 extensions, as read by chain_checks: a permanent delegate can
+    # move any holder's balance; non-transferable locks it in place.
+    "permanentDelegate": "balance_mutable",
+    "nonTransferable": "non_transferable",
 }
 
 # Every power we know how to look for. An authority absent from a reading is
@@ -107,6 +111,14 @@ def authority_readings(payload: dict[str, Any], report: dict[str, Any] | None = 
             if field not in token:
                 continue
             readings[authority] = ABSENT if token[field] is None else PRESENT
+
+    # Our own read of the mint account (chain_checks) answers what the report
+    # did not carry. It fills unread powers only; it never overrides a report.
+    chain_raw = (((payload.get("chain_checks") or {}).get("contract") or {}).get("raw_fields")) or {}
+    if isinstance(chain_raw, dict):
+        for field, authority in RAW_AUTHORITY_FIELDS.items():
+            if field in chain_raw and readings[authority] == UNKNOWN:
+                readings[authority] = ABSENT if chain_raw[field] is None else PRESENT
 
     for flag in _flags(payload):
         authority = AUTHORITY_FLAGS.get(flag)
