@@ -183,14 +183,15 @@
   .node-ring { transform-box: fill-box; transform-origin: center; }
   .pulse { animation: pulse 1.8s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .35; } }
-  .edge { fill: none; stroke-width: 1.6; stroke-dasharray: 6 8; opacity: .35; }
+  .edge { fill: none; stroke-width: 1; stroke-dasharray: 3 6; opacity: .35; }
   .scanning .edge { animation: flow 1s linear infinite; opacity: .6; }
   @keyframes flow { to { stroke-dashoffset: -28; } }
-  .edge.lit { stroke-dasharray: 1000; stroke-dashoffset: 1000; opacity: 1; stroke-width: 2.2; animation: draw 1.2s ease forwards; }
+  .edge.lit { stroke-dasharray: 1000; stroke-dashoffset: 1000; opacity: .95; stroke-width: 1.1; animation: draw 1.2s ease forwards; }
   @keyframes draw { to { stroke-dashoffset: 0; } }
-  .nlabel { font: 700 11px var(--mono); letter-spacing: .14em; fill: var(--muted); text-transform: uppercase; }
-  .nval { font: 700 13px var(--mono); fill: var(--text); }
-  .elabel { font: 700 11px var(--mono); letter-spacing: .06em; }
+  .nlabel { font: 600 10px var(--mono); letter-spacing: .18em; fill: var(--muted); text-transform: uppercase; }
+  .hudtxt text { font: 600 10px var(--mono); letter-spacing: .2em; fill: #5b5675; }
+  .nval { font: 600 12px var(--mono); fill: var(--text); }
+  .elabel { font: 600 10px var(--mono); letter-spacing: .08em; }
   .fade-in { animation: fadein .6s ease forwards; opacity: 0; }
   @keyframes fadein { to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) {
@@ -233,38 +234,53 @@
   <div class="stage">
     <div class="hud" id="hud">
       <div class="hud-tag">trace // <span id="hudState">idle</span></div>
-      <svg id="svg" viewBox="0 0 600 600" aria-label="Trace of the creator, first buyers, history and exit">
+      <svg id="svg" viewBox="0 0 600 600" aria-label="Trace of the creator, its funding, the first buyers, the contract, the holders, the history and the exit">
         <defs>
           <linearGradient id="sol" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stop-color="#9945ff"/><stop offset=".55" stop-color="#19d3ff"/><stop offset="1" stop-color="#14f195"/>
           </linearGradient>
-          <radialGradient id="coreGlow"><stop offset="0" stop-color="#9945ff" stop-opacity=".45"/><stop offset="1" stop-color="#9945ff" stop-opacity="0"/></radialGradient>
+          <radialGradient id="coreGlow"><stop offset="0" stop-color="#9945ff" stop-opacity=".32"/><stop offset="1" stop-color="#9945ff" stop-opacity="0"/></radialGradient>
           <linearGradient id="sweepG" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stop-color="#14f195" stop-opacity="0"/><stop offset="1" stop-color="#14f195" stop-opacity=".35"/>
+            <stop offset="0" stop-color="#14f195" stop-opacity="0"/><stop offset="1" stop-color="#14f195" stop-opacity=".22"/>
           </linearGradient>
-          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           <clipPath id="hexClip"><polygon points="300,236 355,268 355,332 300,364 245,332 245,268"/></clipPath>
-          <pattern id="hex" width="24" height="41.57" patternUnits="userSpaceOnUse" patternTransform="scale(1)">
-            <path d="M12 0 L24 6.93 L24 20.78 L12 27.71 L0 20.78 L0 6.93 Z" fill="none" stroke="#9945ff" stroke-opacity=".06"/>
-          </pattern>
+          <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".7" fill="#9945ff" fill-opacity=".18"/></pattern>
         </defs>
-        <rect width="600" height="600" fill="url(#hex)"/>
-        <circle cx="300" cy="300" r="190" fill="url(#coreGlow)"/>
+        <rect width="600" height="600" fill="url(#dots)"/>
+        <circle cx="300" cy="300" r="210" fill="url(#coreGlow)"/>
+
+        <!-- frame -->
+        <g fill="none" stroke="#19d3ff" stroke-opacity=".55" stroke-width="1">
+          <path d="M10 34 V10 H34"/><path d="M566 10 H590 V34"/><path d="M590 566 V590 H566"/><path d="M34 590 H10 V566"/>
+        </g>
+        <g stroke="#9945ff" stroke-opacity=".16" stroke-width="1">
+          <line x1="300" y1="14" x2="300" y2="168"/><line x1="300" y1="432" x2="300" y2="586"/>
+          <line x1="14" y1="300" x2="40" y2="300"/><line x1="560" y1="300" x2="586" y2="300"/>
+        </g>
+        <g class="hudtxt">
+          <text x="22" y="30">RB://SOLANA</text>
+          <text id="hudPct" x="578" y="30" text-anchor="end">SCAN 000%</text>
+          <text x="22" y="584">MAINNET // x402</text>
+          <text id="hudClock" x="578" y="584" text-anchor="end">T+00:00.0</text>
+        </g>
+        <g id="hudBar"></g>
+
         <g id="edges"></g>
-        <path class="sweep" d="M300 300 L300 60 A240 240 0 0 1 507.8 180 Z" fill="url(#sweepG)"/>
-        <g class="ring spin-slow"><circle cx="300" cy="300" r="128" fill="none" stroke="url(#sol)" stroke-width="1" stroke-dasharray="2 10" opacity=".7"/></g>
-        <g class="ring spin-rev">
-          <circle cx="300" cy="300" r="104" fill="none" stroke="#19d3ff" stroke-opacity=".5" stroke-width="2" stroke-dasharray="60 26 8 26"/>
-        </g>
-        <g class="ring spin-fast">
-          <circle cx="300" cy="300" r="84" fill="none" stroke="#14f195" stroke-opacity=".7" stroke-width="3" stroke-dasharray="40 220"/>
-        </g>
-        <polygon points="300,236 355,268 355,332 300,364 245,332 245,268" fill="#0d0b17"/>
+        <path class="sweep" d="M300 300 L300 72 A228 228 0 0 1 497.5 186 Z" fill="url(#sweepG)"/>
+
+        <!-- core -->
+        <g class="ring spin-slow" id="gradRing"></g>
+        <circle cx="300" cy="300" r="100" fill="none" stroke="#231d3d" stroke-width="1"/>
+        <g class="ring spin-rev"><circle cx="300" cy="300" r="112" fill="none" stroke="#19d3ff" stroke-opacity=".5" stroke-width="1" stroke-dasharray="70 18 4 18"/></g>
+        <g class="ring spin-fast"><circle cx="300" cy="300" r="90" fill="none" stroke="#14f195" stroke-opacity=".85" stroke-width="1.5" stroke-dasharray="26 240"/></g>
+        <polygon points="300,236 355,268 355,332 300,364 245,332 245,268" fill="#0b0a14"/>
         <image id="coreImg" x="245" y="236" width="110" height="128" preserveAspectRatio="xMidYMid slice" clip-path="url(#hexClip)" opacity="0" style="transition:opacity .8s"/>
-        <polygon id="coreHex" points="300,236 355,268 355,332 300,364 245,332 245,268" fill="none" stroke="url(#sol)" stroke-width="2.5" filter="url(#glow)"/>
+        <polygon id="coreHex" points="300,236 355,268 355,332 300,364 245,332 245,268" fill="none" stroke="url(#sol)" stroke-width="1.4" filter="url(#glow)"/>
+        <polygon points="300,226 364,263 364,337 300,374 236,337 236,263" fill="none" stroke="#9945ff" stroke-opacity=".25" stroke-width="1" stroke-dasharray="3 6"/>
         <g id="coreText">
           <text id="coreTop" x="300" y="292" text-anchor="middle" class="nlabel">token</text>
-          <text id="coreSym" x="300" y="316" text-anchor="middle" class="nval" style="font-size:16px">— — —</text>
+          <text id="coreSym" x="300" y="316" text-anchor="middle" class="nval" style="font-size:15px">— — —</text>
         </g>
 
         <g id="nodes"></g>
@@ -292,7 +308,7 @@
   const $ = (id) => document.getElementById(id);
   const svg = $("svg"), edgesG = $("edges"), nodesG = $("nodes");
   const NS = "http://www.w3.org/2000/svg";
-  const COLORS = { danger: "#ff3d6e", warn: "#ffc24b", good: "#14f195", muted: "#5b5675", cyan: "#19d3ff", purple: "#9945ff" };
+  const COLORS = { danger: "#ff3d6e", warn: "#ffc24b", good: "#14f195", green: "#14f195", muted: "#5b5675", cyan: "#19d3ff", purple: "#9945ff" };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const short = (s) => (s ? s.slice(0, 4) + "…" + s.slice(-4) : "");
   let busy = false;
@@ -330,66 +346,145 @@
     return `M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`;
   }
   function particle(pathEl, color, dur, delay = 0) {
-    const c = el("circle", { r: 3, fill: color, filter: "url(#glow)" }, edgesG);
+    const c = el("circle", { r: 1.8, fill: color, filter: "url(#glow)" }, edgesG);
     const m = el("animateMotion", { dur: dur + "s", repeatCount: "indefinite", begin: delay + "s" }, c);
     const mp = el("mpath", {}, m);
     mp.setAttributeNS("http://www.w3.org/1999/xlink", "href", "#" + pathEl.id);
     mp.setAttribute("href", "#" + pathEl.id);
   }
-  function node(x, y, label, value, color, r = 26, below = false) {
-    if (below === "left") {
-      const g = el("g", { class: "fade-in" }, nodesG);
-      el("circle", { cx: x, cy: y, r: r + 10, fill: "none", stroke: color, "stroke-opacity": .25, "stroke-dasharray": "3 5", class: "node-ring spin-slow" }, g);
-      el("circle", { cx: x, cy: y, r, fill: "#0d0b17", stroke: color, "stroke-width": 2, filter: "url(#glow)" }, g);
-      el("circle", { cx: x, cy: y, r: 5, fill: color, class: "pulse" }, g);
-      const tl = el("text", { x: x - r - 14, y: y - 4, "text-anchor": "end", class: "nlabel" }, g); tl.textContent = label;
-      if (value) { const tv = el("text", { x: x - r - 14, y: y + 14, "text-anchor": "end", class: "nval" }, g); tv.textContent = value; tv.setAttribute("style", "fill:" + color); }
-      return g;
-    }
+
+  // A HUD reticle: corner brackets, a thin ring with four ticks, a live dot.
+  function node(x, y, label, value, color, side = "top") {
     const g = el("g", { class: "fade-in" }, nodesG);
-    el("circle", { cx: x, cy: y, r: r + 10, fill: "none", stroke: color, "stroke-opacity": .25, "stroke-dasharray": "3 5", class: "node-ring spin-slow" }, g);
-    el("circle", { cx: x, cy: y, r, fill: "#0d0b17", stroke: color, "stroke-width": 2, filter: "url(#glow)" }, g);
-    el("circle", { cx: x, cy: y, r: 5, fill: color, class: "pulse" }, g);
-    const tl = el("text", { x, y: below ? y + r + 20 : y - r - 16, "text-anchor": "middle", class: "nlabel" }, g); tl.textContent = label;
-    if (value) { const tv = el("text", { x, y: below ? y + r + 38 : y + r + 22, "text-anchor": "middle", class: "nval", fill: color }, g); tv.textContent = value; tv.setAttribute("style", "fill:" + color); }
+    const s = 20, k = 7;
+    el("path", {
+      d: `M${x - s} ${y - s + k}V${y - s}H${x - s + k} M${x + s - k} ${y - s}H${x + s}V${y - s + k} M${x + s} ${y + s - k}V${y + s}H${x + s - k} M${x - s + k} ${y + s}H${x - s}V${y + s - k}`,
+      fill: "none", stroke: color, "stroke-width": 1, opacity: .85,
+    }, g);
+    el("circle", { cx: x, cy: y, r: 15, fill: "none", stroke: color, "stroke-opacity": .35, "stroke-width": 1, "stroke-dasharray": "2 3", class: "node-ring spin-slow" }, g);
+    el("circle", { cx: x, cy: y, r: 10, fill: "#0b0a14", stroke: color, "stroke-width": 1 }, g);
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+      el("line", { x1: x + dx * 4, y1: y + dy * 4, x2: x + dx * 7, y2: y + dy * 7, stroke: color, "stroke-width": 1 }, g);
+    }
+    el("circle", { cx: x, cy: y, r: 1.8, fill: color, class: "pulse" }, g);
+    let lx = x, ly = y - s - 9, vx = x, vy = y + s + 15, anchor = "middle";
+    if (side === "left") { lx = vx = x - s - 9; ly = y - 3; vy = y + 12; anchor = "end"; }
+    if (side === "right") { lx = vx = x + s + 9; ly = y - 3; vy = y + 12; anchor = "start"; }
+    const tl = el("text", { x: lx, y: ly, "text-anchor": anchor, class: "nlabel" }, g); tl.textContent = "// " + label;
+    if (value) { const tv = el("text", { x: vx, y: vy, "text-anchor": anchor, class: "nval" }, g); tv.textContent = value; tv.setAttribute("style", "fill:" + color); }
     return g;
   }
+
   let edgeId = 0;
-  function edge(x1, y1, x2, y2, color, lit, label, bend, r1 = 44, r2 = 78) {
+  function edge(x1, y1, x2, y2, color, lit, label, bend = 0.14, r1 = 24, r2 = 104) {
     const id = "e" + (++edgeId);
     [x1, y1, x2, y2] = trim(x1, y1, x2, y2, r1, r2);
     const p = el("path", { id, d: curve(x1, y1, x2, y2, bend), class: "edge" + (lit ? " lit" : ""), stroke: color }, edgesG);
-    if (lit) particle(p, color, 1.8 + Math.random(), Math.random());
+    if (lit) {
+      particle(p, color, 1.6 + Math.random(), Math.random());
+      for (const [cx, cy] of [[x1, y1], [x2, y2]]) el("rect", { x: cx - 2, y: cy - 2, width: 4, height: 4, fill: color, class: "fade-in" }, edgesG);
+    }
     if (label) {
-      // Text follows its path; a right-to-left path would print it upside down.
       let tid = id;
       if (x2 < x1) {
         tid = id + "r";
-        el("path", { id: tid, d: curve(x2, y2, x1, y1, -(bend ?? 0.18)), fill: "none", stroke: "none" }, edgesG);
+        el("path", { id: tid, d: curve(x2, y2, x1, y1, -bend), fill: "none", stroke: "none" }, edgesG);
       }
       const t = el("text", { class: "elabel fade-in", fill: color, "text-anchor": "middle" }, edgesG);
       const tp = el("textPath", { href: "#" + tid, startOffset: "50%" }, t);
       tp.setAttributeNS("http://www.w3.org/1999/xlink", "href", "#" + tid);
-      el("tspan", { dy: -8 }, tp).textContent = label;
+      el("tspan", { dy: -6 }, tp).textContent = label;
     }
     return p;
   }
   function clearGraph() { edgesG.replaceChildren(); nodesG.replaceChildren(); edgeId = 0; }
 
-  const POS = { creator: [112, 140], buyers: [446, 170], history: [112, 468], exit: [488, 468] };
+  const POS = {
+    funding: [118, 64], creator: [96, 178], contract: [64, 332], history: [116, 488],
+    buyers: [462, 176], holders: [536, 336], exit: [484, 488],
+  };
+  const LABELS = { funding: "funding", creator: "creator", contract: "contract", history: "history", buyers: "first 5 s", holders: "holders", exit: "exit" };
+  const SIDES = { funding: "right", creator: "right", contract: "right", history: "top", buyers: "left", holders: "left", exit: "top" };
+
+  // graduated ring and progress bar, drawn once
+  (function hudStatic() {
+    let d = "";
+    for (let i = 0; i < 72; i++) {
+      const a = (i * 5) * Math.PI / 180, r1 = 124, r2 = i % 6 === 0 ? 136 : 129;
+      d += `M${300 + Math.cos(a) * r1} ${300 + Math.sin(a) * r1}L${300 + Math.cos(a) * r2} ${300 + Math.sin(a) * r2}`;
+    }
+    el("path", { d, stroke: "url(#sol)", "stroke-width": 1, "stroke-opacity": .55, fill: "none" }, $("gradRing"));
+    for (let i = 0; i < 20; i++) el("rect", { x: 478 + i * 5, y: 38, width: 4, height: 5, fill: "#231d3d", class: "seg" }, $("hudBar"));
+  })();
+  function setProgress(p, color = COLORS.green) {
+    const v = Math.max(0, Math.min(100, Math.round(p)));
+    $("hudPct").textContent = `SCAN ${String(v).padStart(3, "0")}%`;
+    $("hudBar").querySelectorAll(".seg").forEach((s, i) => s.setAttribute("fill", i < Math.round(v / 5) ? color : "#231d3d"));
+  }
+  let clockRaf = 0, clockStart = 0;
+  function startClock() {
+    cancelAnimationFrame(clockRaf); clockStart = performance.now();
+    const tick = () => {
+      const t = (performance.now() - clockStart) / 1000;
+      $("hudClock").textContent = `T+${String(Math.floor(t / 60)).padStart(2, "0")}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+      clockRaf = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+  function stopClock() { cancelAnimationFrame(clockRaf); }
 
   function idleGraph() {
     clearGraph();
     const dim = COLORS.muted;
     for (const [k, [x, y]] of Object.entries(POS)) {
-      edge(x, y, 300, 300, dim, false);
-      node(x, y, { creator: "creator", buyers: "first 5 s", history: "history", exit: "exit" }[k], "", dim, 22);
+      if (k === "funding") edge(x, y, ...POS.creator, dim, false, "", 0.1, 22, 22);
+      else edge(x, y, 300, 300, dim, false);
+      node(x, y, LABELS[k], "", dim, SIDES[k]);
     }
+  }
+
+  const ago = (s) => (typeof s !== "number" ? "" : s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : s < 172800 ? `${(s / 3600).toFixed(1)}h` : `${Math.round(s / 86400)}d`);
+
+  function contractReading(k) {
+    if (!k || k.status !== "ok") return { color: COLORS.muted, value: "not read", edge: "" };
+    const ext = k.extensions || {};
+    const bad = [];
+    if (ext.permanent_delegate) bad.push("delegate");
+    if (ext.non_transferable) bad.push("locked");
+    if (ext.default_account_frozen) bad.push("frozen");
+    if (bad.length) return { color: COLORS.danger, value: bad.join(" · "), edge: "can take tokens" };
+    const powers = [];
+    if (k.mint_authority) powers.push("can mint");
+    if (k.freeze_authority) powers.push("can freeze");
+    if (ext.transfer_fee_bps) powers.push(`fee ${(ext.transfer_fee_bps / 100).toFixed(1)}%`);
+    if (powers.length) return { color: COLORS.warn, value: powers.join(" · "), edge: "powers held" };
+    if (k.metadata_mutable) return { color: COLORS.warn, value: "meta editable", edge: "no mint · no freeze" };
+    return { color: COLORS.good, value: "clean", edge: "no mint · no freeze" };
+  }
+  function holdersReading(h) {
+    if (!h || h.status !== "ok") return { color: COLORS.muted, value: "not read", edge: "" };
+    if (h.program_held_pct >= 99 && h.top10_wallet_pct < 1) return { color: COLORS.cyan, value: "all in curve", edge: "wallets sold out" };
+    const t = h.top10_wallet_pct;
+    const color = t >= 50 ? COLORS.danger : t >= 25 ? COLORS.warn : COLORS.good;
+    return { color, value: `top10 ${t.toFixed(0)}%`, edge: `largest ${h.largest_wallet_pct.toFixed(1)}%` };
+  }
+  function fundingReading(f) {
+    if (!f) return { color: COLORS.muted, value: "not read", edge: "" };
+    if (f.status === "busy_wallet") return { color: COLORS.warn, value: "busy wallet", edge: "1000+ txs" };
+    if (f.status !== "ok") return { color: COLORS.muted, value: "unknown", edge: "" };
+    const lead = f.seconds_before_creation;
+    return { color: COLORS.cyan, value: `${f.amount_sol} SOL`, edge: typeof lead === "number" ? `${ago(lead)} before` : "funded" };
   }
 
   function resultGraph(d) {
     clearGraph();
-    const cp = d.creator_position || {}, ls = d.launch_snipe || {}, dh = d.deployer_history || {};
+    const cp = d.creator_position || {}, ls = d.launch_snipe || {}, dh = d.deployer_history || {}, cc = d.chain_checks || {};
+
+    // funding -> creator
+    const fr = fundingReading(cc.funding);
+    edge(...POS.funding, ...POS.creator, fr.color, cc.funding?.status === "ok", fr.edge, 0.1, 22, 22);
+    node(...POS.funding, LABELS.funding, fr.value, fr.color, SIDES.funding);
+
     // creator -> core
     const share = typeof cp.share_at_creation_pct === "number" ? cp.share_at_creation_pct : cp.peak_share_pct;
     let cColor = COLORS.muted, cVal = "not read", cEdge = "";
@@ -397,60 +492,68 @@
     else if (cp.status === "holding") { cColor = share >= 1 ? COLORS.warn : COLORS.good; cVal = short(cp.creator); cEdge = `holds ${(cp.current_share_pct ?? share ?? 0).toFixed(1)}%`; }
     else if (cp.status === "none") { cColor = COLORS.good; cVal = short(cp.creator); cEdge = "held 0%"; }
     edge(...POS.creator, 300, 300, cColor, true, cEdge);
-    node(...POS.creator, "creator", cVal, cColor);
+    node(...POS.creator, LABELS.creator, cVal, cColor, SIDES.creator);
 
-    // exit
-    let eColor = COLORS.muted, eVal = "no exit seen", eEdge = "";
-    if (cp.status === "sold") {
-      eColor = COLORS.danger;
-      const s = cp.sold_after_seconds;
-      const when = typeof s === "number" ? (s < 90 ? s + " s" : s < 5400 ? Math.round(s / 60) + " min" : Math.round(s / 3600) + " h") : "";
-      eVal = `sold ${Math.round(cp.sold_pct_of_peak ?? 100)}%`;
-      eEdge = when ? `${cp.sold_after_is_upper_bound ? "≤" : ""}${when} later` : "sold";
-    } else if (cp.status === "holding" && share >= 1) { eColor = COLORS.warn; eVal = "can still sell"; eEdge = "position open"; }
-    edge(300, 300, ...POS.exit, eColor, cp.status === "sold" || (cp.status === "holding" && share >= 1), eEdge, 0.18, 78, 44);
-    node(...POS.exit, "exit", eVal, eColor);
+    // contract -> core
+    const kr = contractReading(cc.contract);
+    edge(...POS.contract, 300, 300, kr.color, cc.contract?.status === "ok", kr.edge, 0.06);
+    node(...POS.contract, LABELS.contract, kr.value, kr.color, SIDES.contract);
 
-    // first buyers
+    // history -> core
+    const prior = dh.prior_rugs_on_record;
+    const hColor = typeof prior === "number" ? (prior > 0 ? COLORS.danger : COLORS.good) : COLORS.muted;
+    edge(...POS.history, 300, 300, hColor, typeof prior === "number", typeof prior === "number" ? (prior > 0 ? `${prior} rugged` : "clean record") : "");
+    node(...POS.history, LABELS.history, typeof prior === "number" ? `${prior} prior rugs` : "not on record", hColor, SIDES.history);
+
+    // first buyers -> core
     const buyers = (ls.first_buyers || []).slice(0, 7);
     const bColor = ls.status === "sniped" ? COLORS.warn : ls.status === "clean" ? COLORS.good : COLORS.muted;
     const [bx, by] = POS.buyers;
     edge(bx, by, 300, 300, bColor, ls.status === "sniped" || ls.status === "clean",
       ls.status === "sniped" ? `${ls.buyers_within_window} in ${ls.window_seconds} s` : ls.status === "clean" ? "no crowd" : "");
-    node(bx, by, "first 5 s", ls.status === "sniped" ? `${ls.bot_wallets_among_checked}/${ls.wallets_checked} bots` : ls.status === "clean" ? "clean" : "not read", bColor, 26, "left");
-    const span = Math.min(150, 25 * Math.max(1, buyers.length - 1));
+    node(bx, by, LABELS.buyers, ls.status === "sniped" ? `${ls.bot_wallets_among_checked}/${ls.wallets_checked} bots` : ls.status === "clean" ? "clean" : "not read", bColor, SIDES.buyers);
+    const span = Math.min(140, 23 * Math.max(1, buyers.length - 1));
     buyers.forEach((b, i) => {
-      const deg = buyers.length === 1 ? -45 : -120 + span * (i / (buyers.length - 1));
+      const deg = buyers.length === 1 ? -45 : -112 + span * (i / (buyers.length - 1));
       const a = deg * Math.PI / 180;
-      const x = bx + Math.cos(a) * 108, y = by + Math.sin(a) * 108;
+      const x = bx + Math.cos(a) * 96, y = by + Math.sin(a) * 96;
       const col = b.kind === "bot" ? COLORS.danger : COLORS.cyan;
-      const [sx, sy, ex, ey] = trim(x, y, bx, by, 9, 30);
-      const p = el("path", { id: "b" + i, d: curve(sx, sy, ex, ey, 0.08), class: "edge lit", stroke: col, style: `animation-delay:${0.2 + i * 0.12}s` }, edgesG);
-      particle(p, col, 1.2 + i * 0.1, i * 0.2);
-      const g = el("g", { class: "fade-in", style: `animation-delay:${0.3 + i * 0.12}s` }, nodesG);
-      el("circle", { cx: x, cy: y, r: 7, fill: b.kind === "bot" ? "rgba(255,61,110,.18)" : "#0d0b17", stroke: col, "stroke-width": 2, filter: "url(#glow)" }, g);
-      let ox = Math.cos(a) * 18, oy = Math.sin(a) * 18 + 4;
+      const [sx, sy, ex, ey] = trim(x, y, bx, by, 7, 24);
+      const p = el("path", { id: "b" + i, d: curve(sx, sy, ex, ey, 0.06), class: "edge lit", stroke: col, style: `animation-delay:${0.2 + i * 0.1}s` }, edgesG);
+      particle(p, col, 1.1 + i * 0.1, i * 0.2);
+      const g = el("g", { class: "fade-in", style: `animation-delay:${0.3 + i * 0.1}s` }, nodesG);
+      el("rect", { x: x - 5, y: y - 5, width: 10, height: 10, fill: b.kind === "bot" ? "rgba(255,61,110,.14)" : "#0b0a14", stroke: col, "stroke-width": 1, transform: `rotate(45 ${x} ${y})` }, g);
+      el("circle", { cx: x, cy: y, r: 1.4, fill: col }, g);
+      let ox = Math.cos(a) * 14, oy = Math.sin(a) * 14 + 3;
       let anchor = Math.cos(a) > 0.3 ? "start" : Math.cos(a) < -0.3 ? "end" : "middle";
-      if (x > 520) { anchor = "middle"; ox = 0; oy = -14; } // keep the label inside the frame
+      if (x > 530) { anchor = "middle"; ox = 0; oy = -11; }
       const t = el("text", { x: x + ox, y: y + oy, "text-anchor": anchor, class: "elabel", fill: col }, g);
       t.textContent = (b.kind === "bot" ? "bot " : "") + b.seconds_after_creation + "s";
     });
 
-    // history
-    const prior = dh.prior_rugs_on_record;
-    const hColor = typeof prior === "number" ? (prior > 0 ? COLORS.danger : COLORS.good) : COLORS.muted;
-    edge(...POS.history, 300, 300, hColor, typeof prior === "number",
-      typeof prior === "number" ? (prior > 0 ? `${prior} rugged` : "clean record") : "");
-    node(...POS.history, "history", typeof prior === "number" ? `${prior} prior rugs` : "not on record", hColor);
+    // holders -> core
+    const hr = holdersReading(cc.holders);
+    edge(...POS.holders, 300, 300, hr.color, cc.holders?.status === "ok", hr.edge, 0.06);
+    node(...POS.holders, LABELS.holders, hr.value, hr.color, SIDES.holders);
+
+    // core -> exit
+    let eColor = COLORS.muted, eVal = "no exit seen", eEdge = "";
+    if (cp.status === "sold") {
+      eColor = COLORS.danger;
+      eVal = `T+${ago(cp.sold_after_seconds)}`;
+      eEdge = `sold ${Math.round(cp.sold_pct_of_peak ?? 100)}%`;
+    } else if (cp.status === "holding" && share >= 1) { eColor = COLORS.warn; eVal = "can still sell"; eEdge = "position open"; }
+    edge(300, 300, ...POS.exit, eColor, cp.status === "sold" || (cp.status === "holding" && share >= 1), eEdge, 0.14, 104, 24);
+    node(...POS.exit, LABELS.exit, eVal, eColor, SIDES.exit);
 
     // core
     const vColor = { DANGER: COLORS.danger, WARN: COLORS.warn, GOOD: COLORS.good }[d.label] || COLORS.muted;
     $("coreHex").setAttribute("stroke", vColor);
     $("coreSym").textContent = (d.token_symbol || short(d.address) || "token").slice(0, 12);
-    $("coreSym").setAttribute("style", `font-size:16px;fill:${vColor}`);
-    $("coreTop").textContent = d.label || "token";
+    $("coreSym").setAttribute("style", `font-size:15px;fill:${vColor}`);
     $("coreTop").textContent = "";
     $("coreSym").setAttribute("y", "306");
+    setProgress(100, vColor);
     if (coreImageReady) showCoreImage();
   }
 
@@ -492,8 +595,9 @@
     $("coreImg").setAttribute("opacity", "0"); $("coreImg").removeAttribute("href");
     $("coreText").setAttribute("opacity", "1"); $("coreSym").setAttribute("y", "316");
     $("coreHex").setAttribute("stroke", "url(#sol)");
-    $("coreSym").textContent = "— — —"; $("coreSym").removeAttribute("style"); $("coreSym").setAttribute("style", "font-size:16px");
+    $("coreSym").textContent = "— — —"; $("coreSym").setAttribute("style", "font-size:15px");
     $("coreTop").textContent = "token";
+    setProgress(0);
   }
 
   // ---------- verdict panel ----------
@@ -516,6 +620,26 @@
     if (ls.status === "sniped") out.push(["warn", "Launch taken by bots", `${ls.buyers_within_window} wallets bought in the first ${ls.window_seconds}s; ${ls.bot_wallets_among_checked} of ${ls.wallets_checked} checked are bot wallets.`]);
     else if (ls.status === "clean") out.push(["good", "Launch", `No crowd in the first ${ls.window_seconds}s.`]);
     if (typeof dh.prior_rugs_on_record === "number") out.push([dh.prior_rugs_on_record > 0 ? "danger" : "muted", "Creator's record", dh.prior_rugs_on_record > 0 ? `${dh.prior_rugs_on_record} earlier token(s) rugged.` : "No earlier rugs on record."]);
+    const cc = d.chain_checks || {};
+    const tone = (c) => (c === COLORS.danger ? "danger" : c === COLORS.warn ? "warn" : c === COLORS.good ? "good" : "muted");
+    if (cc.contract?.status === "ok") {
+      const k = cc.contract, kr = contractReading(k);
+      const bits = [k.mint_authority ? "can mint new tokens" : "cannot mint", k.freeze_authority ? "can freeze wallets" : "cannot freeze",
+        k.metadata_mutable ? "name and image can change" : "name and image fixed"];
+      out.push([tone(kr.color), "Contract", `${bits.join(" · ")}. ${k.token_program}.`]);
+    }
+    if (cc.holders?.status === "ok") {
+      const h = cc.holders, hr = holdersReading(h);
+      out.push([tone(hr.color), "Holders", h.program_held_pct >= 99 && h.top10_wallet_pct < 1
+        ? "All supply sits in the bonding curve or pool: holders have sold out."
+        : `Top 10 wallets hold ${h.top10_wallet_pct.toFixed(1)}%; largest ${h.largest_wallet_pct.toFixed(1)}%. Pools and curve apart: ${h.program_held_pct.toFixed(1)}%.`]);
+    }
+    if (cc.funding?.status === "ok") {
+      const f = cc.funding;
+      out.push(["muted", "Creator funding", `${f.amount_sol} SOL from ${short(f.funder)}${typeof f.seconds_before_creation === "number" ? `, ${ago(f.seconds_before_creation)} before the token` : ""}${f.method === "durable_nonce_withdrawal" ? " (durable-nonce withdrawal)" : ""}.`]);
+    } else if (cc.funding?.status === "busy_wallet") {
+      out.push(["warn", "Creator funding", "The creator wallet has 1,000+ transactions; first funding out of reach."]);
+    }
     return out;
   }
 
@@ -661,6 +785,8 @@
     ["> tracing the creator's own position", ""],
     ["> counting wallets in the first 5 seconds", ""],
     ["> checking the creator's earlier tokens", ""],
+    ["> reading the mint account and its extensions", ""],
+    ["> ranking holders · tracing the creator's funding", ""],
     ["> listing what could not be checked", ""],
   ];
 
@@ -671,11 +797,13 @@
     busy = true; $("freeBtn").disabled = $("payBtn").disabled = true;
     term.replaceChildren(); t0 = performance.now();
     $("hud").classList.add("scanning"); $("hudState").textContent = "scanning";
-    idleGraph(); resetCore(); $("coreSym").textContent = short(mint);
+    idleGraph(); resetCore(); $("coreSym").textContent = short(mint); startClock();
     loadCoreImage(mint);
     $("verdict").innerHTML = `<div class="v-empty pulse">TRACING ${esc(short(mint))}…</div>`;
     let theatre = Promise.resolve();
-    const runTheatre = () => (theatre = (async () => { for (const [s, c] of STEPS) { log(s, c); await sleep(430); } })());
+    const runTheatre = () => (theatre = (async () => {
+      for (let i = 0; i < STEPS.length; i++) { const [s, c] = STEPS[i]; log(s, c); setProgress(((i + 1) / (STEPS.length + 1)) * 100); await sleep(430); }
+    })());
     try {
       let work;
       if (paid) {
@@ -689,12 +817,12 @@
       const [{ data, receipt }] = await Promise.all([work, theatre]);
       if (!data || data.ok === false) throw new Error(data?.error || "The API returned no verdict.");
       log(`> verdict: ${data.label} ${data.risk_score ?? ""}`, data.label === "DANGER" ? "bad" : data.label === "WARN" ? "warn" : data.label === "GOOD" ? "ok" : "");
-      $("hud").classList.remove("scanning"); $("hudState").textContent = (data.label || "done").toLowerCase();
+      $("hud").classList.remove("scanning"); $("hudState").textContent = (data.label || "done").toLowerCase(); stopClock();
       resultGraph(data);
       renderVerdict(data, receipt);
     } catch (e) {
       await theatre;
-      $("hud").classList.remove("scanning"); $("hudState").textContent = "error";
+      $("hud").classList.remove("scanning"); $("hudState").textContent = "error"; stopClock(); setProgress(0);
       log("> " + (e?.message || e), "bad");
       renderError(e?.message || String(e));
     } finally {
