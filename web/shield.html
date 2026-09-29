@@ -155,7 +155,8 @@
   .links a { color: var(--cyan); text-decoration: none; }
   .links a:hover { text-decoration: underline; }
   .paid { margin-top: 14px; padding: 10px 12px; border: 1px solid rgba(20,241,149,.4); background: rgba(20,241,149,.06); font: 12px var(--mono); color: var(--green); word-break: break-all; }
-  .err { color: var(--danger); font: 13px var(--mono); margin-top: 10px; }
+  .err { color: var(--danger); font: 13px/1.6 var(--mono); margin-top: 10px; overflow-wrap: anywhere; word-break: break-word; }
+  .term .ln.wrap { white-space: normal; overflow-wrap: anywhere; }
 
   @media (max-width: 560px) {
     .chip-link { display: none; }
@@ -521,7 +522,6 @@
     const { PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction, ComputeBudgetProgram } = w3;
     const TOKEN = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     const ATA = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-    const MEMO = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
     const ata = (owner, mint) => PublicKey.findProgramAddressSync([owner.toBytes(), TOKEN.toBytes(), mint.toBytes()], ATA)[0];
     const extra = req.extra || {};
     if (!extra.feePayer || !extra.recentBlockhash) throw new Error("The payment challenge has no fee payer or blockhash.");
@@ -540,8 +540,9 @@
       ],
       data,
     });
-    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-    const memo = new TransactionInstruction({ programId: MEMO, keys: [], data: new TextEncoder().encode(nonce) });
+    // No memo instruction: Phantom appends its own Lighthouse guard instructions
+    // when it signs (four of them today), and the facilitator accepts at most
+    // seven instructions in total, three of which are ours.
     const message = new TransactionMessage({
       payerKey: new PublicKey(extra.feePayer),
       recentBlockhash: extra.recentBlockhash,
@@ -549,22 +550,18 @@
         ComputeBudgetProgram.setComputeUnitLimit({ units: 20000 }),
         ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
         transfer,
-        memo,
       ],
     }).compileToV0Message();
     return new VersionedTransaction(message);
   }
 
-  async function paidScan(mint) {
+  async function preparePayment(mint) {
     const url = `${API}/x402/score?address=${mint}`;
     const w = wallet || (log("> connecting Phantom…", "hl"), await connect());
     log(`> wallet ${short(w.key)} connected`, "ok");
     log("> GET /x402/score → requesting price", "hl");
     const first = await fetch(url);
-    if (first.status !== 402) {
-      if (first.ok) return { data: await first.json(), receipt: null };
-      throw new Error(`Expected 402, got ${first.status}.`);
-    }
+    if (first.status !== 402) throw new Error(`Expected a 402 price quote, got ${first.status}.`);
     const challenge = b64.decodeJson(first.headers.get("PAYMENT-REQUIRED"));
     const req = challenge.accepts.find((a) => String(a.network).startsWith("solana:"));
     if (!req) throw new Error("No Solana payment option offered.");
@@ -573,25 +570,39 @@
     log("> building transfer · fee paid by facilitator", "hl");
     const tx = await buildPayment(req, w.key);
     log("> waiting for Phantom signature…", "warn");
-    const signed = await w.p.signTransaction(tx);
-    log("> signed. settling on Solana…", "ok");
+    let signed;
+    try { signed = await w.p.signTransaction(tx); }
+    catch (e) { throw new Error("Signature cancelled in Phantom. Nothing was paid."); }
+    log("> signed in Phantom", "ok");
     const header = b64.encodeJson({
       x402Version: challenge.x402Version || 2,
       payload: { transaction: b64.fromBytes(signed.serialize()) },
       accepted: req,
       resource: challenge.resource,
     });
+    return { url, header, usd };
+  }
+
+  function facilitatorReason(text) {
+    const m = /\{.*\}/s.exec(text || "");
+    try { const j = JSON.parse(m ? m[0] : text); return j.invalidMessage || j.invalidReason || text; } catch { return text; }
+  }
+
+  async function submitPayment({ url, header, usd }) {
+    log("> settling on Solana…", "hl");
     const paid = await fetch(url, { headers: { "PAYMENT-SIGNATURE": header } });
     const receiptHeader = paid.headers.get("PAYMENT-RESPONSE");
     const receipt = receiptHeader ? b64.decodeJson(receiptHeader) : null;
     if (paid.status === 402) {
+      let why = "payment rejected";
       const again = paid.headers.get("PAYMENT-REQUIRED");
-      const why = again ? (b64.decodeJson(again).error || "payment rejected") : "payment rejected";
-      throw new Error(`Payment not accepted: ${why}. Check you hold at least ${usd} USDC.`);
+      if (again) why = facilitatorReason(b64.decodeJson(again).error || why);
+      else { try { why = facilitatorReason((await paid.json()).error || why); } catch {} }
+      throw new Error(`Payment not accepted, nothing was charged. Reason: ${why}`);
     }
     const data = await paid.json();
     if (paid.status === 503 && data?.x402?.charged === false) log("> no verdict for this token · you were not charged", "warn");
-    else if (receipt?.transaction) log(`> settled · tx ${short(receipt.transaction)}`, "ok");
+    else if (receipt?.transaction) log(`> paid ${usd} USDC · tx ${short(receipt.transaction)}`, "ok");
     return { data, receipt };
   }
 
@@ -614,11 +625,18 @@
     $("hud").classList.add("scanning"); $("hudState").textContent = "scanning";
     idleGraph(); resetCore(); $("coreSym").textContent = short(mint);
     $("verdict").innerHTML = `<div class="v-empty pulse">TRACING ${esc(short(mint))}…</div>`;
-    const theatre = (async () => { for (const [s, c] of STEPS) { log(s, c); await sleep(430); } })();
+    let theatre = Promise.resolve();
+    const runTheatre = () => (theatre = (async () => { for (const [s, c] of STEPS) { log(s, c); await sleep(430); } })());
     try {
-      const work = paid
-        ? paidScan(mint)
-        : fetch(`${API}/score?address=${mint}`).then(async (r) => ({ data: await r.json(), receipt: null }));
+      let work;
+      if (paid) {
+        const ticket = await preparePayment(mint);
+        work = submitPayment(ticket);
+        runTheatre();
+      } else {
+        runTheatre();
+        work = fetch(`${API}/score?address=${mint}`).then(async (r) => ({ data: await r.json(), receipt: null }));
+      }
       const [{ data, receipt }] = await Promise.all([work, theatre]);
       if (!data || data.ok === false) throw new Error(data?.error || "The API returned no verdict.");
       log(`> verdict: ${data.label} ${data.risk_score ?? ""}`, data.label === "DANGER" ? "bad" : data.label === "WARN" ? "warn" : data.label === "GOOD" ? "ok" : "");
