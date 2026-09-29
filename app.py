@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import threading
 import time
 from typing import Any
@@ -9,7 +10,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import psycopg2
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, make_response, request
 from psycopg2.extras import Json, RealDictCursor
 
 from build_identity import build_identity
@@ -23,6 +24,7 @@ from freshness import (
     withhold_verdict,
 )
 import creator_position as creator_position_module
+import x402_solana
 import launch_snipe as launch_snipe_module
 from scoring import (
     SCORING_VERSION,
@@ -453,7 +455,13 @@ def service_info():
             "endpoints": {
                 "health": "/health",
                 "score": "/score?address=<solana_mint>",
+                **(
+                    {"paid_score": f"{x402_solana.PAID_PATH}?address=<solana_mint>"}
+                    if X402_ACTIVE
+                    else {}
+                ),
             },
+            "x402": X402_SETTINGS.public_status() if X402_ACTIVE else {"enabled": False},
         }
     )
 
@@ -629,3 +637,83 @@ def score():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
+
+
+# --- x402 pay-per-scan on Solana -------------------------------------------
+#
+# Same answer as /score, sold per request in USDC on Solana. The free route is
+# untouched. A misconfigured deploy must not take the free API down with it,
+# so a settings error disables only the paid route and says why in the log.
+
+X402_SETTINGS = x402_solana.X402Settings.from_env()
+X402_ACTIVE = False
+_settlements_ready = False
+_settlements_lock = threading.Lock()
+
+
+def record_settlement(record: dict[str, Any]) -> None:
+    global _settlements_ready
+    with db_connect() as connection:
+        with connection.cursor() as cursor:
+            if not _settlements_ready:
+                with _settlements_lock:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS x402_settlements (
+                            id BIGSERIAL PRIMARY KEY,
+                            recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                            network TEXT,
+                            transaction TEXT,
+                            payer TEXT,
+                            amount TEXT,
+                            asset TEXT,
+                            pay_to TEXT,
+                            route TEXT
+                        )
+                        """
+                    )
+                    _settlements_ready = True
+            cursor.execute(
+                """
+                INSERT INTO x402_settlements
+                    (recorded_at, network, transaction, payer, amount, asset, pay_to, route)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    record["recorded_at"],
+                    record.get("network"),
+                    record.get("transaction"),
+                    record.get("payer"),
+                    None if record.get("amount") is None else str(record["amount"]),
+                    record.get("asset"),
+                    record.get("pay_to"),
+                    record.get("route"),
+                ),
+            )
+        connection.commit()
+
+
+@app.get(x402_solana.PAID_PATH)
+def paid_score():
+    if not X402_ACTIVE:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    response = make_response(score())
+    if response.status_code >= 400:
+        return response
+    payload = response.get_json(silent=True) or {}
+    if x402_solana.is_chargeable(payload):
+        return response
+    # No verdict to sell. A 5xx keeps the middleware from settling the payment.
+    payload["x402"] = {
+        "charged": False,
+        "reason": "No verdict was available for this token, so the payment was not settled.",
+    }
+    return jsonify(payload), 503
+
+
+if X402_SETTINGS.enabled:
+    try:
+        x402_solana.install(app, X402_SETTINGS, record=record_settlement)
+        X402_ACTIVE = True
+    except Exception as exc:  # noqa: BLE001
+        print(f"x402 paid route disabled: {exc}", file=sys.stderr)
