@@ -138,6 +138,7 @@
   .v-head { display: flex; align-items: center; gap: 18px; }
   .gauge { width: 92px; height: 92px; flex: none; }
   .v-label { font: 900 34px var(--display); letter-spacing: .06em; line-height: 1; }
+  .v-sym { font: 700 22px var(--display); color: var(--text); margin-left: 14px; letter-spacing: .04em; overflow-wrap: anywhere; }
   .v-name { font: 600 14px var(--mono); color: var(--muted); margin-top: 6px; word-break: break-all; }
   .v-sum { margin: 16px 0 12px; font-size: 18px; color: #d8d4ea; }
   .facts { display: grid; gap: 8px; margin: 12px 0; }
@@ -265,11 +266,7 @@
           <text id="coreTop" x="300" y="292" text-anchor="middle" class="nlabel">token</text>
           <text id="coreSym" x="300" y="316" text-anchor="middle" class="nval" style="font-size:16px">— — —</text>
         </g>
-        <g id="coreCap" opacity="0" style="transition:opacity .8s">
-          <text x="300" y="38" text-anchor="middle" class="nval" style="font-size:17px;letter-spacing:.08em">
-            <tspan id="capLabel">TOKEN</tspan><tspan fill="#5b5675"> · </tspan><tspan id="capSym">—</tspan>
-          </text>
-        </g>
+
         <g id="nodes"></g>
       </svg>
       <div class="scanline"></div>
@@ -452,11 +449,6 @@
     $("coreSym").textContent = (d.token_symbol || short(d.address) || "token").slice(0, 12);
     $("coreSym").setAttribute("style", `font-size:16px;fill:${vColor}`);
     $("coreTop").textContent = d.label || "token";
-    $("capLabel").textContent = d.label || "token";
-    $("capLabel").setAttribute("style", `fill:${vColor}`);
-    $("capSym").textContent = (d.token_symbol || short(d.address) || "").slice(0, 16);
-    $("capSym").setAttribute("style", "fill:#ece9f7");
-    $("coreCap").setAttribute("opacity", "1");
     $("coreTop").textContent = "";
     $("coreSym").setAttribute("y", "306");
     if (coreImageReady) showCoreImage();
@@ -467,7 +459,6 @@
   function showCoreImage() {
     $("coreImg").setAttribute("opacity", "1");
     $("coreText").setAttribute("opacity", "0");
-    $("coreCap").setAttribute("opacity", "1");
   }
   function tryImage(src, ms = 7000) {
     return new Promise((resolve) => {
@@ -499,7 +490,7 @@
 
   function resetCore() {
     $("coreImg").setAttribute("opacity", "0"); $("coreImg").removeAttribute("href");
-    $("coreCap").setAttribute("opacity", "0"); $("coreText").setAttribute("opacity", "1"); $("coreSym").setAttribute("y", "316");
+    $("coreText").setAttribute("opacity", "1"); $("coreSym").setAttribute("y", "316");
     $("coreHex").setAttribute("stroke", "url(#sol)");
     $("coreSym").textContent = "— — —"; $("coreSym").removeAttribute("style"); $("coreSym").setAttribute("style", "font-size:16px");
     $("coreTop").textContent = "token";
@@ -534,7 +525,7 @@
     const nc = (d.not_established || []);
     $("verdict").innerHTML = `
       <div class="v-head fade-in">${gaugeSvg(d.risk_score, color)}
-        <div><div class="v-label" style="color:${color}">${esc(d.label || "UNKNOWN")}</div>
+        <div style="min-width:0"><div class="v-label" style="color:${color}">${esc(d.label || "UNKNOWN")}${d.token_symbol ? `<span class="v-sym">${esc(d.token_symbol)}</span>` : ""}</div>
         <div class="v-name">${esc(name || short(d.address))} · ${esc(short(d.address))}</div></div></div>
       ${d.verdict_summary ? `<p class="v-sum">${esc(d.verdict_summary)}</p>` : d.note ? `<p class="v-sum">${esc(d.note)}</p>` : ""}
       <div class="facts">${facts(d).map(([t, h, b]) => `<div class="fact f-${t}"><b>${esc(h)}</b><span>${esc(b)}</span></div>`).join("")}</div>
