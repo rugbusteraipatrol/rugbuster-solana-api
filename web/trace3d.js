@@ -182,9 +182,97 @@ export function createTrace(container) {
     core.classList.add("on");
     if (mode !== "scanning") startReveal();
   }
+  // --- the token's image rebuilt from particles: colour from each pixel, brighter parts stand out ---
+  const portraitMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: uniforms.uTime, uPix: uniforms.uPix, uForm: { value: 0 }, uFade: { value: 1 } },
+    transparent: true, depthWrite: false,
+    vertexShader: `
+      uniform float uTime, uPix, uForm, uFade;
+      attribute vec3 aFrom; attribute vec3 aColor; attribute float aSeed; attribute float aAlpha;
+      varying vec3 vCol; varying float vA;
+      void main() {
+        float f = smoothstep(0., 1., clamp((uForm - aSeed * .45) / .55, 0., 1.));
+        vec3 pos = mix(aFrom, position, f);
+        pos.z += sin(uTime * 1.3 + aSeed * 6.283 + position.x * 3.) * .015;
+        vec4 mv = modelViewMatrix * vec4(pos, 1.);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = .034 * uPix * (.7 + aSeed * .6) / -mv.z;
+        vCol = aColor; vA = uFade * aAlpha * (.35 + .65 * f);
+      }`,
+    fragmentShader: `
+      varying vec3 vCol; varying float vA;
+      void main() {
+        float r = length(gl_PointCoord - .5);
+        if (r > .5) discard;
+        gl_FragColor = vec4(vCol, smoothstep(.5, .1, r) * vA);
+      }`,
+  });
+  const portrait = new THREE.Group();
+  scene.add(portrait);
+  let portraitPoints = null, portraitToken = 0, formStart = 0;
+
+  function buildPortrait(image) {
+    const S = 60, D = R * 0.56;
+    const c = document.createElement("canvas"); c.width = c.height = S;
+    const g = c.getContext("2d");
+    const side = Math.min(image.naturalWidth, image.naturalHeight);
+    g.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, S, S);
+    const px = g.getImageData(0, 0, S, S).data; // throws if the gateway sent no CORS header
+    // the image's own background (read from its corners) fades out, so only the subject is built
+    const corner = [0, S - 1, S * (S - 1), S * S - 1].map((q) => [px[q * 4], px[q * 4 + 1], px[q * 4 + 2]]);
+    const bg = [0, 1, 2].map((ch) => corner.reduce((a, c) => a + c[ch], 0) / 4);
+    const pos = [], from = [], col = [], seed = [], alpha = [];
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+      const u = i / (S - 1) - 0.5, v = j / (S - 1) - 0.5;
+      if (u * u + v * v > 0.25) continue; // a round portrait
+      const k = (j * S + i) * 4;
+      if (px[k + 3] < 100) continue;
+      const r = px[k] / 255, gg = px[k + 1] / 255, b = px[k + 2] / 255;
+      const lum = 0.3 * r + 0.59 * gg + 0.11 * b;
+      const dist = Math.hypot(px[k] - bg[0], px[k + 1] - bg[1], px[k + 2] - bg[2]) / 441;
+      const edge = 1 - THREE.MathUtils.smoothstep(Math.sqrt(u * u + v * v), 0.36, 0.5);
+      const a = (dist < 0.07 ? 0.08 : 0.95) * edge;
+      if (a < 0.03) continue;
+      alpha.push(a);
+      pos.push(u * 2 * D, -v * 2 * D, (lum - 0.5) * 0.8);
+      const d = new THREE.Vector3().randomDirection().multiplyScalar(R);
+      from.push(d.x, d.y, d.z);
+      col.push(Math.min(1, r * 1.1), Math.min(1, gg * 1.1), Math.min(1, b * 1.1));
+      seed.push(Math.random());
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute("aFrom", new THREE.Float32BufferAttribute(from, 3));
+    geo.setAttribute("aColor", new THREE.Float32BufferAttribute(col, 3));
+    geo.setAttribute("aSeed", new THREE.Float32BufferAttribute(seed, 1));
+    geo.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alpha, 1));
+    return new THREE.Points(geo, portraitMat);
+  }
+
+  function clearPortrait() {
+    if (portraitPoints) { portrait.remove(portraitPoints); portraitPoints.geometry.dispose(); portraitPoints = null; }
+    core.classList.remove("dissolved");
+  }
+
   function setImage(src) {
     const img = core.querySelector("img");
-    if (src) { img.src = src; core.classList.add("has-img"); } else { img.removeAttribute("src"); core.classList.remove("has-img"); }
+    const token = ++portraitToken;
+    clearPortrait();
+    if (!src) { img.removeAttribute("src"); core.classList.remove("has-img"); return; }
+    img.src = src; core.classList.add("has-img");
+    const probe = new Image();
+    probe.crossOrigin = "anonymous";
+    probe.onload = () => {
+      if (token !== portraitToken) return;
+      try {
+        portraitPoints = buildPortrait(probe);
+        portraitPoints.renderOrder = 1;
+        portrait.add(portraitPoints);
+        portraitMat.uniforms.uForm.value = 0; formStart = clock.elapsedTime;
+        core.classList.add("dissolved");
+      } catch { /* no CORS: keep the plain image */ }
+    };
+    probe.src = src;
   }
   function setSymbol(text) { core.querySelector("span").textContent = text || "MINT"; }
 
@@ -225,6 +313,10 @@ export function createTrace(container) {
     const visH = 2 * camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     group.position.x = SHIFT * visH * camera.aspect;
     group.rotation.y = spin;
+    // the portrait faces the reader and sways a little, so its relief shows
+    portrait.position.copy(group.position);
+    portrait.rotation.set(Math.sin(t * 0.4) * 0.15, Math.sin(t * 0.6) * 0.5, 0);
+    portraitMat.uniforms.uForm.value = Math.min(1, (t - formStart) / 1.8);
     back.rotation.y = -t * 0.05;
     group.updateMatrixWorld();
 

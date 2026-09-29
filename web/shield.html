@@ -138,8 +138,8 @@
   .v-head { display: flex; align-items: center; gap: 18px; }
   .gauge { width: 92px; height: 92px; flex: none; }
   .v-label { font: 900 34px var(--display); letter-spacing: .06em; line-height: 1; }
-  .v-sym { font: 700 22px var(--display); color: var(--text); margin-left: 14px; letter-spacing: .04em; overflow-wrap: anywhere; }
-  .v-name { font: 600 14px var(--mono); color: var(--muted); margin-top: 6px; word-break: break-all; }
+  .v-sym { display: inline-block; max-width: 100%; font: 700 22px var(--display); color: var(--text); margin-left: 14px; letter-spacing: .04em; overflow-wrap: anywhere; vertical-align: baseline; }
+  .v-name { font: 600 14px var(--mono); color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
   .v-sum { margin: 16px 0 12px; font-size: 18px; color: #d8d4ea; }
   .facts { display: grid; gap: 8px; margin: 12px 0; }
   .fact { border-left: 3px solid var(--line); padding: 3px 0 3px 12px; }
@@ -165,6 +165,8 @@
   .t3d-labels { pointer-events: auto; cursor: pointer; }
   .sp-core { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .6s; }
   .sp-core.on, .sp-core.has-img { opacity: 1; }
+  .sp-core.dissolved { opacity: 0 !important; }
+  .sp-core:not(.has-img) .t3d-hex, .sp-core:not(.has-img) .t3d-hex > * { background: none; filter: none; }
   .sp-core.t3d-core .t3d-hex { --s: var(--core-s, 92px); }
   .fmark { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .35s; }
   .fm-line { position: absolute; left: 6px; top: -1px; width: 30px; height: 1px; background: var(--c); box-shadow: 0 0 6px var(--c); }
