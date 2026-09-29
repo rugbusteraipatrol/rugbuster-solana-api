@@ -259,7 +259,6 @@
           <line x1="14" y1="300" x2="40" y2="300"/><line x1="560" y1="300" x2="586" y2="300"/>
         </g>
         <g class="hudtxt">
-          <text x="22" y="30">RB://SOLANA</text>
           <text id="hudPct" x="578" y="30" text-anchor="end">SCAN 000%</text>
           <text x="22" y="584">MAINNET // x402</text>
           <text id="hudClock" x="578" y="584" text-anchor="end">T+00:00.0</text>
@@ -404,7 +403,7 @@
     buyers: [462, 176], holders: [536, 336], exit: [484, 488],
   };
   const LABELS = { funding: "funding", creator: "creator", contract: "contract", history: "history", buyers: "first 5 s", holders: "holders", exit: "exit" };
-  const SIDES = { funding: "right", creator: "right", contract: "right", history: "top", buyers: "left", holders: "left", exit: "top" };
+  const SIDES = { funding: "right", creator: "right", contract: "top", history: "top", buyers: "left", holders: "top", exit: "top" };
 
   // graduated ring and progress bar, drawn once
   (function hudStatic() {
@@ -421,17 +420,13 @@
     $("hudPct").textContent = `SCAN ${String(v).padStart(3, "0")}%`;
     $("hudBar").querySelectorAll(".seg").forEach((s, i) => s.setAttribute("fill", i < Math.round(v / 5) ? color : "#231d3d"));
   }
-  let clockRaf = 0, clockStart = 0;
-  function startClock() {
-    cancelAnimationFrame(clockRaf); clockStart = performance.now();
-    const tick = () => {
-      const t = (performance.now() - clockStart) / 1000;
-      $("hudClock").textContent = `T+${String(Math.floor(t / 60)).padStart(2, "0")}:${(t % 60).toFixed(1).padStart(4, "0")}`;
-      clockRaf = requestAnimationFrame(tick);
-    };
-    tick();
+  let clockTimer = 0, clockStart = 0;
+  function showClock() {
+    const t = (performance.now() - clockStart) / 1000;
+    $("hudClock").textContent = `T+${String(Math.floor(t / 60)).padStart(2, "0")}:${(t % 60).toFixed(1).padStart(4, "0")}`;
   }
-  function stopClock() { cancelAnimationFrame(clockRaf); }
+  function startClock() { clearInterval(clockTimer); clockStart = performance.now(); showClock(); clockTimer = setInterval(showClock, 100); }
+  function stopClock() { clearInterval(clockTimer); showClock(); }
 
   function idleGraph() {
     clearGraph();
@@ -452,21 +447,21 @@
     if (ext.permanent_delegate) bad.push("delegate");
     if (ext.non_transferable) bad.push("locked");
     if (ext.default_account_frozen) bad.push("frozen");
-    if (bad.length) return { color: COLORS.danger, value: bad.join(" · "), edge: "can take tokens" };
+    if (bad.length) return { color: COLORS.danger, value: bad.join(" · "), edge: "" };
     const powers = [];
     if (k.mint_authority) powers.push("can mint");
     if (k.freeze_authority) powers.push("can freeze");
     if (ext.transfer_fee_bps) powers.push(`fee ${(ext.transfer_fee_bps / 100).toFixed(1)}%`);
-    if (powers.length) return { color: COLORS.warn, value: powers.join(" · "), edge: "powers held" };
-    if (k.metadata_mutable) return { color: COLORS.warn, value: "meta editable", edge: "no mint · no freeze" };
-    return { color: COLORS.good, value: "clean", edge: "no mint · no freeze" };
+    if (powers.length) return { color: COLORS.warn, value: powers.join(" · "), edge: "" };
+    if (k.metadata_mutable) return { color: COLORS.warn, value: "meta editable", edge: "" };
+    return { color: COLORS.good, value: "clean", edge: "" };
   }
   function holdersReading(h) {
     if (!h || h.status !== "ok") return { color: COLORS.muted, value: "not read", edge: "" };
-    if (h.program_held_pct >= 99 && h.top10_wallet_pct < 1) return { color: COLORS.cyan, value: "all in curve", edge: "wallets sold out" };
+    if (h.program_held_pct >= 99 && h.top10_wallet_pct < 1) return { color: COLORS.cyan, value: "all in curve", edge: "" };
     const t = h.top10_wallet_pct;
     const color = t >= 50 ? COLORS.danger : t >= 25 ? COLORS.warn : COLORS.good;
-    return { color, value: `top10 ${t.toFixed(0)}%`, edge: `largest ${h.largest_wallet_pct.toFixed(1)}%` };
+    return { color, value: `top10 ${t.toFixed(0)}%`, edge: "" };
   }
   function fundingReading(f) {
     if (!f) return { color: COLORS.muted, value: "not read", edge: "" };
@@ -510,7 +505,7 @@
     const bColor = ls.status === "sniped" ? COLORS.warn : ls.status === "clean" ? COLORS.good : COLORS.muted;
     const [bx, by] = POS.buyers;
     edge(bx, by, 300, 300, bColor, ls.status === "sniped" || ls.status === "clean",
-      ls.status === "sniped" ? `${ls.buyers_within_window} in ${ls.window_seconds} s` : ls.status === "clean" ? "no crowd" : "");
+      "");
     node(bx, by, LABELS.buyers, ls.status === "sniped" ? `${ls.bot_wallets_among_checked}/${ls.wallets_checked} bots` : ls.status === "clean" ? "clean" : "not read", bColor, SIDES.buyers);
     const span = Math.min(140, 23 * Math.max(1, buyers.length - 1));
     buyers.forEach((b, i) => {
