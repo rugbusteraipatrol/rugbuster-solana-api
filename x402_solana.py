@@ -30,6 +30,7 @@ CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402"
 PAID_PATH = "/x402/score"
 PAID_ROUTE = f"GET {PAID_PATH}"
 CHARGEABLE_LABELS = frozenset({"DANGER", "WARN", "GOOD"})
+LEDGER_TIER = "solana-score"
 _SOLANA_ADDRESS = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 _PRICE = re.compile(r"\$\d+(?:\.\d{1,6})?")
 

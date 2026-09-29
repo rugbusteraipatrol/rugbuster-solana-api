@@ -652,6 +652,11 @@ _settlements_lock = threading.Lock()
 
 
 def record_settlement(record: dict[str, Any]) -> None:
+    """Append to the shared x402 ledger that the Base service already writes.
+
+    One table for every chain: `network` tells Solana from Base, and `tier`
+    names the product that was sold.
+    """
     global _settlements_ready
     with db_connect() as connection:
         with connection.cursor() as cursor:
@@ -661,14 +666,15 @@ def record_settlement(record: dict[str, Any]) -> None:
                         """
                         CREATE TABLE IF NOT EXISTS x402_settlements (
                             id BIGSERIAL PRIMARY KEY,
-                            recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                            settled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                             network TEXT,
-                            transaction TEXT,
                             payer TEXT,
-                            amount TEXT,
-                            asset TEXT,
                             pay_to TEXT,
-                            route TEXT
+                            asset TEXT,
+                            amount_atomic NUMERIC,
+                            tier TEXT,
+                            route TEXT,
+                            transaction TEXT
                         )
                         """
                     )
@@ -676,18 +682,19 @@ def record_settlement(record: dict[str, Any]) -> None:
             cursor.execute(
                 """
                 INSERT INTO x402_settlements
-                    (recorded_at, network, transaction, payer, amount, asset, pay_to, route)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (settled_at, network, payer, pay_to, asset, amount_atomic, tier, route, transaction)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     record["recorded_at"],
                     record.get("network"),
-                    record.get("transaction"),
                     record.get("payer"),
-                    None if record.get("amount") is None else str(record["amount"]),
-                    record.get("asset"),
                     record.get("pay_to"),
+                    record.get("asset"),
+                    None if record.get("amount") is None else str(record["amount"]),
+                    x402_solana.LEDGER_TIER,
                     record.get("route"),
+                    record.get("transaction"),
                 ),
             )
         connection.commit()

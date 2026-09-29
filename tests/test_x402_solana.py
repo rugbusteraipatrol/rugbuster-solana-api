@@ -208,3 +208,71 @@ def test_real_server_builds_without_network():
     # otherwise only show up as a silently disabled paid route in production.
     server = x402_solana.build_server(settings(), record=lambda _record: None)
     assert server is not None
+
+
+class _Cursor:
+    def __init__(self, log):
+        self.log = log
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=None):
+        self.log.append((" ".join(sql.split()), params))
+
+
+class _Connection:
+    def __init__(self, log):
+        self.log = log
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def cursor(self):
+        return _Cursor(self.log)
+
+    def commit(self):
+        self.log.append(("COMMIT", None))
+
+
+def test_settlement_goes_to_the_shared_ledger_columns(monkeypatch):
+    # The table already exists, written by the Base x402 service, with these
+    # columns. Inserting under other names silently lost the first payment.
+    log = []
+    monkeypatch.setattr(api, "db_connect", lambda: _Connection(log))
+    monkeypatch.setattr(api, "_settlements_ready", True)
+    api.record_settlement(
+        {
+            "recorded_at": "2026-09-29T12:50:00+00:00",
+            "network": x402_solana.SOLANA_MAINNET,
+            "transaction": "sig",
+            "payer": "payer",
+            "amount": "10000",
+            "asset": USDC_MINT,
+            "pay_to": PAY_TO,
+            "route": "GET /x402/score",
+        }
+    )
+    sql, params = log[0]
+    assert sql.startswith(
+        "INSERT INTO x402_settlements (settled_at, network, payer, pay_to, asset, "
+        "amount_atomic, tier, route, transaction)"
+    )
+    assert params == (
+        "2026-09-29T12:50:00+00:00",
+        x402_solana.SOLANA_MAINNET,
+        "payer",
+        PAY_TO,
+        USDC_MINT,
+        "10000",
+        "solana-score",
+        "GET /x402/score",
+        "sig",
+    )
+    assert log[-1] == ("COMMIT", None)
