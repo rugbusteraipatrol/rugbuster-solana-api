@@ -193,11 +193,11 @@
   .hud-over .bar { display: flex; gap: 1px; margin-top: 5px; justify-content: flex-end; }
   .hud-over .bar i { width: 4px; height: 5px; background: #231d3d; }
   .hud-over .clk { position: absolute; bottom: 12px; right: 14px; }
-  .hud-over .net { position: absolute; bottom: 12px; left: 14px; }
-  .hud-over .drag { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); color: #3d3858; }
-  .hud-over::before, .hud-over::after { content: ""; position: absolute; width: 22px; height: 22px; border: 1px solid rgba(25,211,255,.55); }
-  .hud-over::before { right: 8px; top: 8px; border-left: 0; border-bottom: 0; }
-  .hud-over::after { left: 8px; bottom: 8px; border-right: 0; border-top: 0; }
+  .hud-over .net { display: none; }
+  .hud-over .drag { position: absolute; bottom: 12px; left: 14px; color: #3d3858; }
+  /* with the sphere there is no frame: it floats in the page like on the home page */
+  .hud.three { background: none; border: 0; overflow: visible; }
+  .hud.three .scanline { display: none; }
   @media (max-width: 560px) {
     .chip-link { display: none; }
     .logo { font-size: 18px; }
