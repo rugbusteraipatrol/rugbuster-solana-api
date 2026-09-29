@@ -49,6 +49,7 @@ class X402Settings:
     facilitator_url: str = CDP_FACILITATOR_URL
     cdp_api_key_id: str = ""
     cdp_api_key_secret: str = ""
+    rpc_url: str = ""
 
     @classmethod
     def from_env(cls) -> "X402Settings":
@@ -63,6 +64,7 @@ class X402Settings:
             ).strip().rstrip("/"),
             cdp_api_key_id=os.getenv("CDP_API_KEY_ID", "").strip(),
             cdp_api_key_secret=os.getenv("CDP_API_KEY_SECRET", ""),
+            rpc_url=os.getenv("SOLANA_RPC_URL", "").strip(),
         )
 
     def validate(self) -> None:
@@ -157,7 +159,9 @@ def build_server(settings: X402Settings, record: Callable[[dict[str, Any]], None
         )
     )
     server = x402ResourceServerSync(facilitator)
-    server.register(settings.network, ExactSvmServerScheme())
+    # With an RPC the challenge carries a fresh blockhash, so a browser wallet
+    # can build the payment without a Solana RPC of its own.
+    server.register(settings.network, ExactSvmServerScheme(rpc_url=settings.rpc_url or None))
 
     if record is not None:
         def _after_settle(context: Any) -> None:
@@ -170,6 +174,41 @@ def build_server(settings: X402Settings, record: Callable[[dict[str, Any]], None
 
         server.on_after_settle(_after_settle)
     return server
+
+
+# Browsers need to read the challenge and receipt headers and to send the
+# payment header, which makes the paid request a preflighted CORS request.
+CORS_HEADERS = [
+    ("Access-Control-Allow-Origin", "*"),
+    ("Access-Control-Allow-Methods", "GET, OPTIONS"),
+    ("Access-Control-Allow-Headers", "PAYMENT-SIGNATURE, X-PAYMENT, Content-Type"),
+    (
+        "Access-Control-Expose-Headers",
+        "PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-PAYMENT-RESPONSE",
+    ),
+]
+
+
+class CorsMiddleware:
+    """Outermost WSGI layer, so the 402 written by the payment middleware
+    carries CORS headers too; Flask's after_request never sees that response."""
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+
+    def __call__(self, environ, start_response):
+        if environ.get("REQUEST_METHOD") == "OPTIONS":
+            start_response("204 No Content", CORS_HEADERS + [("Access-Control-Max-Age", "600")])
+            return [b""]
+
+        def with_cors(status, headers, exc_info=None):
+            present = {name.lower() for name, _ in headers}
+            headers = list(headers) + [h for h in CORS_HEADERS if h[0].lower() not in present]
+            if exc_info is None:
+                return start_response(status, headers)
+            return start_response(status, headers, exc_info)
+
+        return self.inner(environ, with_cors)
 
 
 def install(app, settings: X402Settings, *, record=None, server=None):
@@ -198,10 +237,12 @@ def install(app, settings: X402Settings, *, record=None, server=None):
                 "Solana token risk verdict before signing: what the creator did with "
                 "their own supply, bot wallets in the first five seconds, the "
                 "creator's earlier tokens, and an explicit list of what was not "
-                "checked. Charged only when a verdict is returned."
+                "checked. Charged only when a verdict is returned"
             ),
             service_name="RugBuster Solana",
             tags=["security", "solana", "token-risk", "pre-sign"],
         )
     }
-    return PaymentMiddleware(app, routes, server)
+    middleware = PaymentMiddleware(app, routes, server)
+    app.wsgi_app = CorsMiddleware(app.wsgi_app)
+    return middleware

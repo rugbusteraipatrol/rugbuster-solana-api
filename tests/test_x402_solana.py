@@ -276,3 +276,39 @@ def test_settlement_goes_to_the_shared_ledger_columns(monkeypatch):
         "sig",
     )
     assert log[-1] == ("COMMIT", None)
+
+
+def _paid_app():
+    flask_app = Flask(__name__)
+
+    @flask_app.get("/x402/score")
+    def paid():  # pragma: no cover - the middleware answers first
+        return jsonify({"ok": True, "label": "DANGER"})
+
+    x402_solana.install(flask_app, settings(), server=fake_server())
+    return flask_app.test_client()
+
+
+def test_browser_can_read_the_challenge():
+    response = _paid_app().get(f"/x402/score?address={MINT}")
+    assert response.status_code == 402
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    exposed = response.headers["Access-Control-Expose-Headers"]
+    assert "PAYMENT-REQUIRED" in exposed and "PAYMENT-RESPONSE" in exposed
+
+
+def test_browser_preflight_allows_the_payment_header():
+    response = _paid_app().open(f"/x402/score?address={MINT}", method="OPTIONS")
+    assert response.status_code == 204
+    assert "PAYMENT-SIGNATURE" in response.headers["Access-Control-Allow-Headers"]
+
+
+def test_rpc_url_is_read_from_the_service_env(monkeypatch):
+    monkeypatch.setenv("SOLANA_RPC_URL", "https://rpc.example")
+    assert x402_solana.X402Settings.from_env().rpc_url == "https://rpc.example"
+
+
+def test_shield_page_is_served(client):
+    response = client.get("/shield")
+    assert response.status_code == 200
+    assert b"CREATOR" in response.data and b"/x402/score" in response.data

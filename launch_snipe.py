@@ -40,7 +40,7 @@ STUDY = {
     "early_buyers": 1226,
     "early_buyers_that_are_bot_wallets": 670,
     "population": "traded launches whose creator wallet never held the token, May-Aug 2026",
-    "study": "https://github.com/rugbusteraipatrol/rugbuster-solana-outcomes",
+    "study": "https://gitlab.com/rugbuster/rugbuster-solana-outcomes",
 }
 
 

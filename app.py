@@ -10,7 +10,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import psycopg2
-from flask import Flask, jsonify, make_response, request
+from flask import Flask, jsonify, make_response, request, send_from_directory
 from psycopg2.extras import Json, RealDictCursor
 
 from build_identity import build_identity
@@ -464,6 +464,15 @@ def service_info():
             "x402": X402_SETTINGS.public_status() if X402_ACTIVE else {"enabled": False},
         }
     )
+
+
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+
+
+@app.get("/shield")
+def shield_page():
+    """Creator Trace: the browser front end for /score and /x402/score."""
+    return send_from_directory(WEB_DIR, "shield.html")
 
 
 @app.get("/health")
