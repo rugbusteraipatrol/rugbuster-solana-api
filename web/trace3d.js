@@ -272,7 +272,11 @@ export function createTrace(container) {
         core.classList.add("dissolved");
       } catch { /* no CORS: keep the plain image */ }
     };
-    probe.src = src;
+    // the page already loaded this image without CORS; a cached copy of that load cannot be
+    // read, so the particle copy asks under its own URL
+    const url = new URL(src, location.href);
+    url.searchParams.set("rb_px", "1");
+    probe.src = url.href;
   }
   function setSymbol(text) { core.querySelector("span").textContent = text || "MINT"; }
 
