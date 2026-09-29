@@ -163,11 +163,20 @@
   .hud.three svg { display: none; }
   .t3d, .t3d-labels { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
   .t3d-labels { pointer-events: auto; cursor: pointer; }
-  .tt-label { font: 600 11px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); text-align: center; white-space: nowrap; text-shadow: 0 0 8px #000, 0 0 2px #000; transition: opacity .35s; }
-  .tt-label i { font-style: normal; display: block; color: var(--c, var(--muted)); opacity: .8; }
-  .tt-label b { display: block; font: 700 15px var(--mono); letter-spacing: .04em; text-transform: none; color: var(--text); margin-top: 3px; }
-  .tt-img { transition: opacity .35s; }
-  .tt-img .t3d-hex { --s: 78px; }
+  .sp-core { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .6s; }
+  .sp-core.on, .sp-core.has-img { opacity: 1; }
+  .sp-core.t3d-core .t3d-hex { --s: var(--core-s, 92px); }
+  .fmark { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .35s; }
+  .fm-line { position: absolute; left: 6px; top: -1px; width: 30px; height: 1px; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  .fm-box { position: absolute; left: 36px; top: 0; transform: translateY(-50%); transform-origin: 0 50%; transition: transform .4s ease; width: max-content; max-width: 220px; background: rgba(6,5,12,.84); border-left: 2px solid var(--c); padding: 6px 11px 7px; }
+  .fm-box i { display: block; font: 600 10px var(--mono); letter-spacing: .2em; text-transform: uppercase; font-style: normal; color: var(--c); }
+  .fm-box b { display: block; font: 600 13px var(--mono); color: var(--text); margin-top: 2px; }
+  .fm-left .fm-line { left: auto; right: 6px; }
+  .fm-left .fm-box { left: auto; right: 36px; border-left: 0; border-right: 2px solid var(--c); text-align: right; transform-origin: 100% 50%; }
+  .fm-old .fm-box { transform: translateY(-50%) scale(.82); }
+  .fm-verdict .fm-box { max-width: none; white-space: nowrap; }
+  .fm-verdict .fm-box b { font: 900 19px var(--display); color: var(--c); letter-spacing: .04em; }
+  @media (max-width: 560px) { .fm-box { max-width: 118px; } .fm-box b { font-size: 11px; } .fm-verdict .fm-box b { font-size: 15px; } }
   .t3d-labels > div { pointer-events: none; }
   .t3d-label { font: 600 10px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); text-align: center; white-space: nowrap; text-shadow: 0 0 6px #000, 0 0 2px #000; }
   .t3d-label i { font-style: normal; display: block; }
