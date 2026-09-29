@@ -159,6 +159,32 @@
   .err { color: var(--danger); font: 13px/1.6 var(--mono); margin-top: 10px; overflow-wrap: anywhere; word-break: break-word; }
   .term .ln.wrap { white-space: normal; overflow-wrap: anywhere; }
 
+  /* 3D trace */
+  .hud.three svg { display: none; }
+  .t3d, .t3d-labels { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+  .t3d-labels { pointer-events: auto; cursor: grab; }
+  .t3d-labels:active { cursor: grabbing; }
+  .t3d-labels > div { pointer-events: none; }
+  .t3d-label { font: 600 10px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); text-align: center; white-space: nowrap; text-shadow: 0 0 6px #000, 0 0 2px #000; }
+  .t3d-label i { font-style: normal; display: block; }
+  .t3d-label b { display: block; font: 600 12px var(--mono); letter-spacing: .06em; text-transform: none; color: var(--c, var(--muted)); margin-top: 2px; }
+  .t3d-core .t3d-hex { --s: 92px; width: var(--s); height: calc(var(--s) * 1.15); background: var(--c, #9945ff); padding: 2px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); filter: drop-shadow(0 0 12px var(--c, #9945ff)); }
+  .t3d-core .t3d-hex > * { width: 100%; height: 100%; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: #0b0a14; }
+  .t3d-core img { object-fit: cover; display: none; }
+  .t3d-core.has-img img { display: block; }
+  .t3d-core span { display: grid; place-items: center; font: 800 14px var(--display); color: var(--text); letter-spacing: .06em; }
+  .t3d-core.has-img span { display: none; }
+  .hud-over { position: absolute; inset: 0; pointer-events: none; display: none; font: 600 10px var(--mono); letter-spacing: .2em; color: #5b5675; }
+  .hud.three .hud-over { display: block; }
+  .hud-over .pct { position: absolute; top: 12px; right: 14px; text-align: right; }
+  .hud-over .bar { display: flex; gap: 1px; margin-top: 5px; justify-content: flex-end; }
+  .hud-over .bar i { width: 4px; height: 5px; background: #231d3d; }
+  .hud-over .clk { position: absolute; bottom: 12px; right: 14px; }
+  .hud-over .net { position: absolute; bottom: 12px; left: 14px; }
+  .hud-over .drag { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); color: #3d3858; }
+  .hud-over::before, .hud-over::after { content: ""; position: absolute; width: 22px; height: 22px; border: 1px solid rgba(25,211,255,.55); }
+  .hud-over::before { right: 8px; top: 8px; border-left: 0; border-bottom: 0; }
+  .hud-over::after { left: 8px; bottom: 8px; border-right: 0; border-top: 0; }
   @media (max-width: 560px) {
     .chip-link { display: none; }
     .logo { font-size: 18px; }
@@ -284,6 +310,7 @@
 
         <g id="nodes"></g>
       </svg>
+      <div class="hud-over"><div class="pct"><span id="ovPct">SCAN 000%</span><div class="bar" id="ovBar"></div></div><div class="net">MAINNET // x402</div><div class="drag">drag to rotate</div><div class="clk" id="ovClk">T+00:00.0</div></div>
       <div class="scanline"></div>
     </div>
 
@@ -299,6 +326,20 @@
   </footer>
 </div>
 
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module">
+  try {
+    const probe = document.createElement("canvas");
+    if (!(probe.getContext("webgl2") || probe.getContext("webgl"))) throw new Error("no webgl");
+    const { createTrace } = await import("./trace3d.js");
+    const hud = document.getElementById("hud");
+    window.trace3d = createTrace(hud);
+    hud.classList.add("three");
+    window.dispatchEvent(new Event("trace3d-ready"));
+  } catch (e) { console.warn("3D trace unavailable, keeping 2D:", e); }
+</script>
 <script>
 (() => {
   const API = /railway\.app$/.test(location.hostname) ? "" : "https://rugbuster-solana-api-production.up.railway.app";
@@ -415,20 +456,23 @@
     el("path", { d, stroke: "url(#sol)", "stroke-width": 1, "stroke-opacity": .55, fill: "none" }, $("gradRing"));
     for (let i = 0; i < 20; i++) el("rect", { x: 478 + i * 5, y: 38, width: 4, height: 5, fill: "#231d3d", class: "seg" }, $("hudBar"));
   })();
+  for (let i = 0; i < 20; i++) $("ovBar").appendChild(document.createElement("i"));
   function setProgress(p, color = COLORS.green) {
     const v = Math.max(0, Math.min(100, Math.round(p)));
-    $("hudPct").textContent = `SCAN ${String(v).padStart(3, "0")}%`;
+    $("hudPct").textContent = $("ovPct").textContent = `SCAN ${String(v).padStart(3, "0")}%`;
     $("hudBar").querySelectorAll(".seg").forEach((s, i) => s.setAttribute("fill", i < Math.round(v / 5) ? color : "#231d3d"));
+    $("ovBar").querySelectorAll("i").forEach((s, i) => { s.style.background = i < Math.round(v / 5) ? color : "#231d3d"; });
   }
   let clockTimer = 0, clockStart = 0;
   function showClock() {
     const t = (performance.now() - clockStart) / 1000;
-    $("hudClock").textContent = `T+${String(Math.floor(t / 60)).padStart(2, "0")}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+    $("hudClock").textContent = $("ovClk").textContent = `T+${String(Math.floor(t / 60)).padStart(2, "0")}:${(t % 60).toFixed(1).padStart(4, "0")}`;
   }
   function startClock() { clearInterval(clockTimer); clockStart = performance.now(); showClock(); clockTimer = setInterval(showClock, 100); }
   function stopClock() { clearInterval(clockTimer); showClock(); }
 
   function idleGraph() {
+    if (window.trace3d) window.trace3d.idle();
     clearGraph();
     const dim = COLORS.muted;
     for (const [k, [x, y]] of Object.entries(POS)) {
@@ -471,7 +515,43 @@
     return { color: COLORS.cyan, value: `${f.amount_sol} SOL`, edge: typeof lead === "number" ? `${ago(lead)} before` : "funded" };
   }
 
+  function buildModel(d) {
+    const cp = d.creator_position || {}, ls = d.launch_snipe || {}, dh = d.deployer_history || {}, cc = d.chain_checks || {};
+    const fr = fundingReading(cc.funding), kr = contractReading(cc.contract), hr = holdersReading(cc.holders);
+    const share = typeof cp.share_at_creation_pct === "number" ? cp.share_at_creation_pct : cp.peak_share_pct;
+    let creator = { color: COLORS.muted, value: "not read", lit: false };
+    if (cp.status === "sold") creator = { color: share >= 1 ? COLORS.danger : COLORS.warn, value: `bought ${share.toFixed(1)}%`, lit: true };
+    else if (cp.status === "holding") creator = { color: share >= 1 ? COLORS.warn : COLORS.good, value: `holds ${(cp.current_share_pct ?? share ?? 0).toFixed(1)}%`, lit: true };
+    else if (cp.status === "none") creator = { color: COLORS.good, value: "held 0%", lit: true };
+    const prior = dh.prior_rugs_on_record;
+    let exit = { color: COLORS.muted, value: "no exit seen", lit: false };
+    if (cp.status === "sold") exit = { color: COLORS.danger, value: `sold ${Math.round(cp.sold_pct_of_peak ?? 100)}% · T+${ago(cp.sold_after_seconds)}`, lit: true };
+    else if (cp.status === "holding" && share >= 1) exit = { color: COLORS.warn, value: "can still sell", lit: true };
+    return {
+      verdictColor: { DANGER: COLORS.danger, WARN: COLORS.warn, GOOD: COLORS.good }[d.label] || COLORS.muted,
+      symbol: (d.token_symbol || short(d.address) || "token").slice(0, 12),
+      nodes: {
+        funding: { color: fr.color, value: fr.value + (fr.edge ? ` · ${fr.edge}` : ""), lit: cc.funding?.status === "ok" },
+        creator,
+        contract: { color: kr.color, value: kr.value, lit: cc.contract?.status === "ok" },
+        history: { color: typeof prior === "number" ? (prior > 0 ? COLORS.danger : COLORS.good) : COLORS.muted, value: typeof prior === "number" ? `${prior} prior rugs` : "not on record", lit: typeof prior === "number" },
+        buyers: { color: ls.status === "sniped" ? COLORS.warn : ls.status === "clean" ? COLORS.good : COLORS.muted, value: ls.status === "sniped" ? `${ls.bot_wallets_among_checked}/${ls.wallets_checked} bots · ${ls.buyers_within_window} in ${ls.window_seconds}s` : ls.status === "clean" ? "no crowd" : "not read", lit: ls.status === "sniped" || ls.status === "clean" },
+        holders: { color: hr.color, value: hr.value, lit: cc.holders?.status === "ok" },
+        exit,
+      },
+      buyers: (ls.first_buyers || []).slice(0, 7).map((b) => ({ kind: b.kind || "wallet", t: b.seconds_after_creation })),
+    };
+  }
+  let lastData = null;
+  window.addEventListener("trace3d-ready", () => {
+    if (lastData) window.trace3d.result(buildModel(lastData));
+    const src = $("coreImg").getAttribute("href");
+    if (coreImageReady && src) window.trace3d.setImage(src);
+  });
+
   function resultGraph(d) {
+    lastData = d;
+    if (window.trace3d) window.trace3d.result(buildModel(d));
     clearGraph();
     const cp = d.creator_position || {}, ls = d.launch_snipe || {}, dh = d.deployer_history || {}, cc = d.chain_checks || {};
 
@@ -579,6 +659,7 @@
           if (token !== imageToken) return;
           $("coreImg").setAttribute("href", src);
           coreImageReady = true;
+          window.trace3d?.setImage(src);
           if ($("hudState").textContent !== "scanning") showCoreImage();
           return;
         }
@@ -587,6 +668,7 @@
   }
 
   function resetCore() {
+    window.trace3d?.setImage(null);
     $("coreImg").setAttribute("opacity", "0"); $("coreImg").removeAttribute("href");
     $("coreText").setAttribute("opacity", "1"); $("coreSym").setAttribute("y", "316");
     $("coreHex").setAttribute("stroke", "url(#sol)");
@@ -792,12 +874,14 @@
     busy = true; $("freeBtn").disabled = $("payBtn").disabled = true;
     term.replaceChildren(); t0 = performance.now();
     $("hud").classList.add("scanning"); $("hudState").textContent = "scanning";
+    lastData = null;
     idleGraph(); resetCore(); $("coreSym").textContent = short(mint); startClock();
+    window.trace3d?.setSymbol(short(mint)); window.trace3d?.setScanning(true);
     loadCoreImage(mint);
     $("verdict").innerHTML = `<div class="v-empty pulse">TRACING ${esc(short(mint))}…</div>`;
     let theatre = Promise.resolve();
     const runTheatre = () => (theatre = (async () => {
-      for (let i = 0; i < STEPS.length; i++) { const [s, c] = STEPS[i]; log(s, c); setProgress(((i + 1) / (STEPS.length + 1)) * 100); await sleep(430); }
+      for (let i = 0; i < STEPS.length; i++) { const [s, c] = STEPS[i]; log(s, c); setProgress(((i + 1) / (STEPS.length + 1)) * 100); window.trace3d?.reveal(i); await sleep(430); }
     })());
     try {
       let work;
@@ -812,12 +896,12 @@
       const [{ data, receipt }] = await Promise.all([work, theatre]);
       if (!data || data.ok === false) throw new Error(data?.error || "The API returned no verdict.");
       log(`> verdict: ${data.label} ${data.risk_score ?? ""}`, data.label === "DANGER" ? "bad" : data.label === "WARN" ? "warn" : data.label === "GOOD" ? "ok" : "");
-      $("hud").classList.remove("scanning"); $("hudState").textContent = (data.label || "done").toLowerCase(); stopClock();
+      $("hud").classList.remove("scanning"); $("hudState").textContent = (data.label || "done").toLowerCase(); stopClock(); window.trace3d?.setScanning(false);
       resultGraph(data);
       renderVerdict(data, receipt);
     } catch (e) {
       await theatre;
-      $("hud").classList.remove("scanning"); $("hudState").textContent = "error"; stopClock(); setProgress(0);
+      $("hud").classList.remove("scanning"); $("hudState").textContent = "error"; stopClock(); setProgress(0); window.trace3d?.setScanning(false);
       log("> " + (e?.message || e), "bad");
       renderError(e?.message || String(e));
     } finally {

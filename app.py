@@ -575,6 +575,14 @@ def shield_page():
     return send_from_directory(WEB_DIR, "shield.html")
 
 
+@app.get("/trace3d.js")
+def shield_trace3d():
+    """The 3D scene Creator Trace loads; the page keeps a 2D trace without WebGL."""
+    response = send_from_directory(WEB_DIR, "trace3d.js", mimetype="text/javascript")
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return response
+
+
 @app.get("/health")
 def health():
     try:

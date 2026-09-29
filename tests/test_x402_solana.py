@@ -334,3 +334,10 @@ def test_token_meta_without_rpc_is_empty_not_an_error(client, monkeypatch):
     api._token_meta_cache.clear()
     body = client.get(f"/token-meta?address={MINT}").get_json()
     assert body["ok"] is True and body["image"] is None and body["image_candidates"] == []
+
+
+def test_trace3d_script_is_served_as_javascript(client):
+    response = client.get("/trace3d.js")
+    assert response.status_code == 200
+    assert response.mimetype == "text/javascript"
+    assert b"createTrace" in response.data
