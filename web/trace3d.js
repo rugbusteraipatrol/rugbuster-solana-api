@@ -1,8 +1,8 @@
-// Creator Trace in 3D. The page builds a plain model from the API answer and
-// hands it here; this file only draws it. If WebGL is not available the page
-// keeps its 2D trace.
+// Creator Trace as a time tunnel. The camera flies through the token's life:
+// each gate is a moment (funding, creation, the first five seconds, the exit,
+// what holds now, the creator's record) and the last gate is the verdict.
+// The page builds a plain model from the API answer; this file only draws it.
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
@@ -10,32 +10,36 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const MUTED = "#5b5675";
-const KEYS = ["funding", "creator", "contract", "history", "buyers", "holders", "exit"];
-const LABELS = { funding: "funding", creator: "creator", contract: "contract", history: "history", buyers: "first 5 s", holders: "holders", exit: "exit" };
-const POS = {
-  funding: [-3.5, 3.1, -1.0],
-  creator: [-2.9, 1.4, 1.0],
-  contract: [-3.8, -0.6, 0.1],
-  history: [-2.5, -2.7, 0.9],
-  buyers: [2.8, 2.0, 0.6],
-  holders: [3.8, -0.3, -0.8],
-  exit: [2.7, -2.6, 1.2],
-};
+const SEGMENTS = 60;
+
+// Where each moment sits along the tunnel (0..1), in the order it happened.
+const EVENTS = [
+  { key: "funding", u: 0.12, title: "funding" },
+  { key: "creator", u: 0.22, title: "t+0 · created", image: true },
+  { key: "buyers", u: 0.32, title: "first 5 seconds" },
+  { key: "exit", u: 0.42, title: "creator exit" },
+  { key: "holders", u: 0.52, title: "holders now" },
+  { key: "contract", u: 0.61, title: "contract" },
+  { key: "history", u: 0.70, title: "creator record" },
+  { key: "verdict", u: 0.80, title: "verdict", image: true },
+];
 
 function glowTexture() {
-  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const c = document.createElement("canvas"); c.width = c.height = 64;
   const g = c.getContext("2d");
-  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(0.25, "rgba(255,255,255,.5)"); r.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(0.3, "rgba(255,255,255,.45)"); r.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(c);
 }
 
-function circle(radius, segments = 128) {
+function polygon(radius, sides, rot = 0) {
   const pts = [];
-  for (let i = 0; i <= segments; i++) { const a = (i / segments) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * radius, Math.sin(a) * radius, 0)); }
+  for (let i = 0; i <= sides; i++) { const a = rot + (i / sides) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * radius, Math.sin(a) * radius, 0)); }
   return new THREE.BufferGeometry().setFromPoints(pts);
 }
+
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
 export function createTrace(container) {
   const size = () => [container.clientWidth, container.clientHeight];
@@ -53,263 +57,285 @@ export function createTrace(container) {
   container.appendChild(labelRenderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x07060d);
-  scene.fog = new THREE.FogExp2(0x07060d, 0.035);
+  scene.background = new THREE.Color(0x05040a);
+  scene.fog = new THREE.Fog(0x05040a, 5, 34);
 
-  const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 200);
-  camera.position.set(0, 1.4, 14.5);
-
-  const controls = new OrbitControls(camera, labelRenderer.domElement);
-  controls.enableDamping = true; controls.dampingFactor = 0.06;
-  controls.enablePan = false; controls.minDistance = 8; controls.maxDistance = 20;
-  controls.autoRotate = true; controls.autoRotateSpeed = 0.55;
-  controls.minPolarAngle = Math.PI * 0.22; controls.maxPolarAngle = Math.PI * 0.62;
+  const camera = new THREE.PerspectiveCamera(68, W / H, 0.05, 200);
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), W < 500 ? 0.5 : 0.62, 0.35, 0.18);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.75, 0.4, 0.12);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
   const glow = glowTexture();
   const clock = new THREE.Clock();
 
-  // --- floor grid, scrolling toward the viewer ---
-  const gridMat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,
-    uniforms: { uTime: { value: 0 }, uA: { value: new THREE.Color("#9945ff") }, uB: { value: new THREE.Color("#14f195") } },
-    vertexShader: "varying vec3 vPos; void main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  // --- the tunnel path ---
+  const pts = [];
+  for (let i = 0; i <= SEGMENTS; i++) pts.push(new THREE.Vector3(Math.sin(i * 0.33) * 2.4, Math.cos(i * 0.21) * 1.4, -i * 5));
+  const path = new THREE.CatmullRomCurve3(pts);
+  const frames = path.computeFrenetFrames(600, false);
+  const pointAt = (u) => path.getPointAt(THREE.MathUtils.clamp(u, 0, 1));
+  const frameAt = (u) => {
+    const i = Math.round(THREE.MathUtils.clamp(u, 0, 1) * 600);
+    return { n: frames.normals[i], b: frames.binormals[i], t: frames.tangents[i] };
+  };
+
+  // wall: a wireframe tube with a scrolling shimmer
+  const tubeMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.BackSide,
+    uniforms: { uTime: { value: 0 }, uA: { value: new THREE.Color("#9945ff") }, uB: { value: new THREE.Color("#19d3ff") } },
+    vertexShader: "varying vec2 vUv; varying float vDepth; void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }",
     fragmentShader: `
-      uniform float uTime; uniform vec3 uA; uniform vec3 uB; varying vec3 vPos;
+      uniform float uTime; uniform vec3 uA; uniform vec3 uB; varying vec2 vUv; varying float vDepth;
       void main(){
-        vec2 p = vPos.xy * 0.9; p.y += uTime * 0.5;
+        vec2 p = vec2(vUv.x * 320.0, vUv.y * 16.0);
         vec2 g = abs(fract(p - 0.5) - 0.5) / fwidth(p);
         float line = 1.0 - min(min(g.x, g.y), 1.0);
-        float d = length(vPos.xy);
-        float fade = 1.0 - smoothstep(3.0, 22.0, d);
-        vec3 col = mix(uA, uB, smoothstep(-12.0, 12.0, vPos.x));
-        gl_FragColor = vec4(col, line * 0.3 * fade);
+        float band = 0.5 + 0.5 * sin(vUv.x * 240.0 - uTime * 3.0);
+        vec3 col = mix(uA, uB, vUv.y);
+        float fade = 1.0 - smoothstep(8.0, 32.0, vDepth);
+        gl_FragColor = vec4(col, line * (0.16 + band * 0.12) * fade);
       }`,
   });
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(70, 70, 1, 1), gridMat);
-  floor.rotation.x = -Math.PI / 2; floor.position.y = -4.2;
-  scene.add(floor);
+  scene.add(new THREE.Mesh(new THREE.TubeGeometry(path, 900, 3.2, 16, false), tubeMat));
 
-  // --- dust ---
-  const dustGeo = new THREE.BufferGeometry();
-  const N = 900, arr = new Float32Array(N * 3), cols = new Float32Array(N * 3);
-  const palette = [new THREE.Color("#9945ff"), new THREE.Color("#19d3ff"), new THREE.Color("#14f195")];
-  for (let i = 0; i < N; i++) {
-    const r = 9 + Math.random() * 22, t = Math.random() * Math.PI * 2, u = Math.random() * 2 - 1;
-    arr.set([r * Math.sqrt(1 - u * u) * Math.cos(t), r * u * 0.6, r * Math.sqrt(1 - u * u) * Math.sin(t)], i * 3);
-    const c = palette[i % 3]; cols.set([c.r, c.g, c.b], i * 3);
-  }
-  dustGeo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
-  dustGeo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
-  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 0.045, vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false }));
-  scene.add(dust);
-
-  // --- core ---
-  const core = new THREE.Group(); scene.add(core);
-  const icoMat = new THREE.LineBasicMaterial({ color: "#19d3ff", transparent: true, opacity: 0.85 });
-  const ico = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.45, 1)), icoMat);
-  core.add(ico);
-  const innerMat = new THREE.MeshBasicMaterial({ color: "#9945ff", transparent: true, opacity: 0.07, depthWrite: false });
-  core.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1.4, 1), innerMat));
-  const coreHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: "#9945ff", transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false }));
-  coreHalo.scale.setScalar(3.1); core.add(coreHalo);
-
-  const rings = [];
-  [[2.1, "#9945ff", 0.55, [1.2, 0.3, 0]], [2.5, "#19d3ff", 0.35, [0.2, 1.1, 0.4]], [2.9, "#14f195", 0.18, [1.57, 0, 0]]].forEach(([r, color, opacity, rot], i) => {
-    const m = new THREE.LineDashedMaterial({ color, transparent: true, opacity, dashSize: i === 2 ? 0.05 : 0.35, gapSize: i === 2 ? 0.12 : 0.18 });
-    const line = new THREE.Line(circle(r), m); line.computeLineDistances();
-    line.rotation.set(...rot); scene.add(line); rings.push(line);
-  });
-
-  // token image lives in an HTML label so any image host works (no CORS for WebGL)
-  const coreEl = document.createElement("div"); coreEl.className = "t3d-core";
-  coreEl.innerHTML = `<div class="t3d-hex"><img alt=""><span>MINT</span></div>`;
-  const coreLabel = new CSS2DObject(coreEl); core.add(coreLabel);
-
-  // scan pulses
-  const pulses = [];
-  function spawnPulse(color = "#14f195") {
-    const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(1.5, 1.54, 96), m);
-    ring.rotation.x = -Math.PI / 2 + (Math.random() - 0.5) * 0.6; ring.rotation.y = (Math.random() - 0.5) * 0.6;
-    scene.add(ring); pulses.push({ ring, born: clock.elapsedTime });
+  // plain rings every few metres give the sense of speed
+  const ringGeo = polygon(2.9, 6, Math.PI / 6);
+  for (let i = 0; i < 90; i++) {
+    const u = i / 90;
+    const m = new THREE.LineBasicMaterial({ color: i % 5 === 0 ? "#19d3ff" : "#9945ff", transparent: true, opacity: i % 5 === 0 ? 0.35 : 0.14 });
+    const ring = new THREE.Line(ringGeo, m);
+    ring.position.copy(pointAt(u)); ring.lookAt(pointAt(Math.min(1, u + 0.001)));
+    scene.add(ring);
   }
 
-  // --- nodes ---
-  const nodes = {};
-  function makeNode(key) {
-    const g = new THREE.Group(); g.position.set(...POS[key]);
-    const shellMat = new THREE.LineBasicMaterial({ color: MUTED, transparent: true, opacity: 0.9 });
-    const shell = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.OctahedronGeometry(0.26)), shellMat);
-    const dotMat = new THREE.MeshBasicMaterial({ color: MUTED });
-    dotMat.toneMapped = false;
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), dotMat);
-    const haloMat = new THREE.SpriteMaterial({ map: glow, color: MUTED, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
-    const halo = new THREE.Sprite(haloMat); halo.scale.setScalar(0.85);
-    const ringMat = new THREE.LineBasicMaterial({ color: MUTED, transparent: true, opacity: 0.5 });
-    const orbit = new THREE.Line(circle(0.48, 48), ringMat);
-    g.add(shell, dot, halo, orbit);
-    const el = document.createElement("div"); el.className = "t3d-label";
-    el.innerHTML = `<i>// ${LABELS[key]}</i><b></b>`;
-    const label = new CSS2DObject(el); label.position.set(0, 0.62, 0); g.add(label);
-    g.scale.setScalar(0.001); scene.add(g);
-    nodes[key] = { g, shell, shellMat, dotMat, haloMat, ringMat, orbit, el, label, target: 1, shown: false, spin: 0.4 + Math.random() * 0.6 };
-  }
-  KEYS.forEach(makeNode);
+  // speed streaks
+  const STREAKS = 260;
+  const streakPos = new Float32Array(STREAKS * 6);
+  const streakGeo = new THREE.BufferGeometry();
+  streakGeo.setAttribute("position", new THREE.BufferAttribute(streakPos, 3));
+  const streakMat = new THREE.LineBasicMaterial({ color: "#19d3ff", transparent: true, opacity: 0.5 });
+  scene.add(new THREE.LineSegments(streakGeo, streakMat));
+  const streakData = Array.from({ length: STREAKS }, () => ({ u: Math.random(), a: Math.random() * Math.PI * 2, r: 0.6 + Math.random() * 2.2 }));
 
-  // --- edges ---
-  let edges = [], particles = [], swarm = [];
-  function clearEdges() {
-    for (const e of edges) { scene.remove(e.line); e.line.geometry.dispose(); }
-    for (const p of particles) scene.remove(p.s);
-    for (const s of swarm) { scene.remove(s.mesh); if (s.line) scene.remove(s.line); }
-    edges = []; particles = []; swarm = [];
-  }
-  function addEdge(a, b, color, lit, speed = 1) {
-    const va = new THREE.Vector3(...a), vb = new THREE.Vector3(...b);
-    const mid = va.clone().add(vb).multiplyScalar(0.5);
-    const ctrl = mid.clone().multiplyScalar(1.12).add(new THREE.Vector3(0, 0.6, 0));
-    const curve = new THREE.QuadraticBezierCurve3(va, ctrl, vb);
-    const pts = curve.getPoints(80);
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: lit ? 1 : 0.18 });
-    const line = new THREE.Line(geo, mat); geo.setDrawRange(0, lit ? 0 : 81);
-    scene.add(line);
-    edges.push({ line, geo, lit, grow: 0 });
-    if (lit) {
-      for (let i = 0; i < 3; i++) {
-        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-        s.scale.setScalar(0.18); scene.add(s);
-        particles.push({ s, curve, t: i / 3, speed: 0.22 * speed * (0.8 + Math.random() * 0.4) });
-      }
+  // --- event gates ---
+  const gates = {};
+  for (const ev of EVENTS) {
+    const g = new THREE.Group();
+    g.position.copy(pointAt(ev.u)); g.lookAt(pointAt(Math.min(1, ev.u + 0.001)));
+    const hexMat = new THREE.LineBasicMaterial({ color: MUTED, transparent: true, opacity: 0.9 });
+    const hex = new THREE.Line(polygon(2.35, 6, Math.PI / 6), hexMat);
+    const innerMat = new THREE.LineBasicMaterial({ color: MUTED, transparent: true, opacity: 0.5 });
+    const inner = new THREE.Line(polygon(2.05, 64), innerMat);
+    const ticks = new THREE.Group();
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2, r1 = 2.5, r2 = i % 6 === 0 ? 2.75 : 2.6;
+      ticks.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(Math.cos(a) * r1, Math.sin(a) * r1, 0), new THREE.Vector3(Math.cos(a) * r2, Math.sin(a) * r2, 0)]), innerMat));
     }
-  }
-  const CORE = [0, 0, 0];
+    const haloMat = new THREE.SpriteMaterial({ map: glow, color: MUTED, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    const halo = new THREE.Sprite(haloMat); halo.scale.setScalar(3.4);
+    g.add(hex, inner, ticks, halo);
 
-  function setNode(key, color, value, show = true) {
-    const n = nodes[key];
-    n.shellMat.color.set(color); n.dotMat.color.set(color); n.haloMat.color.set(color); n.ringMat.color.set(color);
-    n.el.querySelector("b").textContent = value || "";
-    n.el.style.setProperty("--c", color);
-    if (show && !n.shown) { n.shown = true; n.bornAt = clock.elapsedTime; }
-  }
+    const el = document.createElement("div"); el.className = "tt-label";
+    el.innerHTML = `<i>// ${ev.title}</i><b></b>`;
+    const label = new CSS2DObject(el); label.position.set(0, 2.95, 0); g.add(label);
 
-  // --- state ---
-  let scanning = false, lastPulse = 0, verdictColor = null;
-
-  function idle() {
-    clearEdges();
-    verdictColor = null;
-    icoMat.color.set("#19d3ff"); coreHalo.material.color.set("#9945ff");
-    coreEl.style.setProperty("--c", "#9945ff");
-    for (const k of KEYS) {
-      setNode(k, MUTED, "", true);
-      addEdge(POS[k], k === "funding" ? POS.creator : CORE, MUTED, false);
+    let imgEl = null;
+    if (ev.image) {
+      imgEl = document.createElement("div"); imgEl.className = "t3d-core tt-img";
+      imgEl.innerHTML = `<div class="t3d-hex"><img alt=""><span>MINT</span></div>`;
+      g.add(new CSS2DObject(imgEl));
     }
+    scene.add(g);
+    gates[ev.key] = { ev, g, hex, hexMat, innerMat, haloMat, ticks, el, imgEl };
   }
 
-  function reveal(step) {
-    // light the node the log line is about, as a hint while the scan runs
-    const order = ["creator", "creator", "creator", "buyers", "history", "contract", "holders", "exit"];
-    const key = order[Math.min(step, order.length - 1)];
-    const n = nodes[key]; if (n) { n.haloMat.color.set("#14f195"); n.haloMat.opacity = 0.9; n.flash = clock.elapsedTime; }
-    spawnPulse();
-  }
-
-  function result(model) {
-    clearEdges();
-    verdictColor = model.verdictColor;
-    icoMat.color.set(model.verdictColor); coreHalo.material.color.set(model.verdictColor);
-    coreEl.style.setProperty("--c", model.verdictColor);
-    coreEl.querySelector("span").textContent = model.symbol || "TOKEN";
-    for (const k of KEYS) {
-      const m = model.nodes[k];
-      setNode(k, m.color, m.value, true);
-      nodes[k].haloMat.opacity = 0.32;
-      const from = POS[k], to = k === "funding" ? POS.creator : CORE;
-      if (k === "exit") addEdge(CORE, POS.exit, m.color, m.lit, 1.8);
-      else addEdge(from, to, m.color, m.lit);
-    }
-    // the bot swarm around the first-buyers node
-    const base = new THREE.Vector3(...POS.buyers);
-    (model.buyers || []).forEach((b, i, all) => {
-      const a = (i / Math.max(1, all.length)) * Math.PI * 2;
-      const off = new THREE.Vector3(Math.cos(a) * 0.95, 0.55 + Math.sin(a * 2) * 0.35, Math.sin(a) * 0.95);
+  // bots that fly past the camera in the first-five-seconds stretch
+  let bolts = [];
+  function launchBolts(buyers) {
+    for (const b of bolts) scene.remove(b.mesh);
+    bolts = [];
+    const u0 = EVENTS.find((e) => e.key === "buyers").u;
+    buyers.forEach((b, i) => {
       const color = b.kind === "bot" ? "#ff3d6e" : "#19d3ff";
-      const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.TetrahedronGeometry(0.13)), new THREE.LineBasicMaterial({ color }));
-      mesh.position.copy(base).add(off); scene.add(mesh);
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([mesh.position.clone(), base.clone()]), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 }));
-      scene.add(line);
-      swarm.push({ mesh, line, off, a, speed: 0.4 + Math.random() * 0.3 });
+      const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 3.2)]);
+      const mesh = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }));
+      const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      head.scale.setScalar(0.5); mesh.add(head);
+      scene.add(mesh);
+      bolts.push({ mesh, a: (i / Math.max(1, buyers.length)) * Math.PI * 2, r: 1.1 + (i % 3) * 0.4, u: u0 - 0.035 - i * 0.004, speed: 0.05 + Math.random() * 0.03 });
     });
   }
 
-  function setScanning(on) { scanning = on; controls.autoRotateSpeed = on ? 2.4 : 0.55; }
+  // exit burst
+  let burst = null;
+  function makeBurst(color) {
+    if (burst) scene.remove(burst.points);
+    const n = 420, pos = new Float32Array(n * 3), vel = [];
+    for (let i = 0; i < n; i++) vel.push(new THREE.Vector3().randomDirection().multiplyScalar(2 + Math.random() * 5));
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const points = new THREE.Points(geo, new THREE.PointsMaterial({ color, size: 0.09, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    points.position.copy(pointAt(EVENTS.find((e) => e.key === "exit").u));
+    scene.add(points);
+    burst = { points, vel, fired: null };
+  }
+
+  // --- flight state ---
+  let mode = "idle";        // idle | scanning | tour | done
+  let camU = 0.02, tour = null, model = null;
+
+  function setGate(key, color, value, lit) {
+    const gt = gates[key]; if (!gt) return;
+    gt.hexMat.color.set(color); gt.innerMat.color.set(color); gt.haloMat.color.set(color);
+    gt.hexMat.opacity = lit ? 1 : 0.55;
+    gt.el.querySelector("b").textContent = value || "";
+    gt.el.style.setProperty("--c", color);
+    if (gt.imgEl) gt.imgEl.style.setProperty("--c", color);
+  }
+
+  function idle() {
+    mode = "idle"; model = null; tour = null;
+    for (const key in gates) { setGate(key, MUTED, "", false); gates[key].haloMat.opacity = 0; }
+    for (const b of bolts) scene.remove(b.mesh);
+    bolts = [];
+    if (burst) { scene.remove(burst.points); burst = null; }
+    tubeMat.uniforms.uA.value.set("#9945ff");
+  }
+
+  function reveal() { /* the warp itself is the progress cue */ }
+
+  function setScanning(on) {
+    if (on) mode = "scanning";
+    else if (mode === "scanning") { mode = "idle"; if (model) startTour(); }
+  }
+
+  function startTour() {
+    if (!model) return;
+    camU = 0.02; mode = "tour";
+    tour = { i: 0, from: camU, phase: "fly", t0: clock.elapsedTime };
+    for (const key in gates) gates[key].haloMat.opacity = 0;
+    launchBolts(model.buyers || []);
+    makeBurst(model.nodes.exit.color);
+  }
+
+  function result(m) {
+    model = m;
+    for (const ev of EVENTS) {
+      if (ev.key === "verdict") setGate("verdict", m.verdictColor, `${m.label || "—"} · ${m.score ?? "–"}/100`, true);
+      else { const n = m.nodes[ev.key]; setGate(ev.key, n.color, n.value, n.lit); }
+    }
+    tubeMat.uniforms.uA.value.set(m.verdictColor);
+    for (const key of ["creator", "verdict"]) gates[key].imgEl.querySelector("span").textContent = m.symbol || "TOKEN";
+    if (mode !== "scanning") startTour();
+  }
 
   function setImage(src) {
-    const img = coreEl.querySelector("img");
-    if (src) { img.src = src; coreEl.classList.add("has-img"); } else { img.removeAttribute("src"); coreEl.classList.remove("has-img"); }
+    for (const key of ["creator", "verdict"]) {
+      const el = gates[key].imgEl, img = el.querySelector("img");
+      if (src) { img.src = src; el.classList.add("has-img"); } else { img.removeAttribute("src"); el.classList.remove("has-img"); }
+    }
   }
-  function setSymbol(text) { coreEl.querySelector("span").textContent = text || "MINT"; }
+  function setSymbol(text) { for (const key of ["creator", "verdict"]) gates[key].imgEl.querySelector("span").textContent = text || "MINT"; }
+
+  labelRenderer.domElement.addEventListener("click", () => { if (model && mode !== "scanning") startTour(); });
 
   // --- loop ---
+  const tmp = new THREE.Vector3();
+  const buyersU = EVENTS.find((e) => e.key === "buyers").u;
   function frame() {
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
-    gridMat.uniforms.uTime.value = t;
-    dust.rotation.y = t * 0.012;
-    const speed = scanning ? 1.6 : 0.25;
-    ico.rotation.y += 0.004 * (scanning ? 6 : 1); ico.rotation.x += 0.002 * (scanning ? 6 : 1);
-    rings[0].rotation.z += 0.004 * speed * 4; rings[1].rotation.z -= 0.003 * speed * 4; rings[2].rotation.z += 0.0015 * speed * 4;
-    coreHalo.material.opacity = 0.24 + Math.sin(t * (scanning ? 8 : 2)) * 0.08;
+    tubeMat.uniforms.uTime.value = t;
 
-    if (scanning && t - lastPulse > 0.55) { spawnPulse(); lastPulse = t; }
-    for (let i = pulses.length - 1; i >= 0; i--) {
-      const p = pulses[i], age = t - p.born;
-      p.ring.scale.setScalar(1 + age * 3.2); p.ring.material.opacity = Math.max(0, 0.6 - age * 0.35);
-      if (age > 1.8) { scene.remove(p.ring); p.ring.geometry.dispose(); pulses.splice(i, 1); }
+    if (mode === "idle" || mode === "scanning") {
+      camU += (mode === "scanning" ? 0.06 : 0.004) * dt;
+      if (camU > 0.9) camU = 0.02;
     }
 
-    for (const k of KEYS) {
-      const n = nodes[k];
-      const s = n.shown ? Math.min(1, (t - (n.bornAt || 0)) * 2.2) : 0.001;
-      const ease = 1 - Math.pow(1 - s, 3);
-      n.g.scale.setScalar(Math.max(0.001, ease));
-      n.shell.rotation.y += 0.01 * n.spin; n.shell.rotation.x += 0.006 * n.spin;
-      n.orbit.rotation.x = Math.PI / 2 + Math.sin(t * 0.7 + n.spin) * 0.4; n.orbit.rotation.y += 0.01;
-      n.g.position.y = POS[k][1] + Math.sin(t * 0.8 + n.spin * 5) * 0.08;
-      if (n.flash && t - n.flash > 0.6) { n.haloMat.opacity = 0.32; n.flash = 0; }
-    }
-    if (verdictColor) nodes.exit.haloMat.opacity = 0.25 + Math.abs(Math.sin(t * 3)) * 0.35;
-
-    for (const e of edges) if (e.lit && e.grow < 81) { e.grow = Math.min(81, e.grow + 2.2); e.geo.setDrawRange(0, Math.floor(e.grow)); }
-    for (const p of particles) { p.t = (p.t + p.speed * dt) % 1; p.s.position.copy(p.curve.getPoint(p.t)); }
-    const base = nodes.buyers.g.position;
-    for (const s of swarm) {
-      s.a += s.speed * dt;
-      const off = new THREE.Vector3(Math.cos(s.a) * 0.95, s.off.y, Math.sin(s.a) * 0.95);
-      s.mesh.position.copy(base).add(off); s.mesh.rotation.x += 0.03; s.mesh.rotation.y += 0.02;
-      s.line.geometry.setFromPoints([s.mesh.position.clone(), base.clone()]);
+    if (mode === "tour" && tour) {
+      const target = EVENTS[tour.i];
+      const stopAt = target.u - 0.028;
+      if (tour.phase === "fly") {
+        const k = Math.min(1, (t - tour.t0) / 1.05);
+        camU = tour.from + (stopAt - tour.from) * ease(k);
+        if (k >= 1) {
+          tour.phase = "hold"; tour.t0 = t; gates[target.key].haloMat.opacity = 0.16;
+          if (target.key === "exit" && burst && model.nodes.exit.lit) burst.fired = t;
+        }
+      } else if (target.key !== "verdict" && t - tour.t0 > 0.75) {
+        gates[target.key].haloMat.opacity = 0.05;
+        tour.i += 1; tour.from = camU; tour.phase = "fly"; tour.t0 = t;
+      } else if (target.key === "verdict") {
+        mode = "done";
+      }
     }
 
-    controls.update();
+    // camera on the path, looking ahead, with a slow roll
+    camera.position.copy(pointAt(camU));
+    const fr = frameAt(camU);
+    camera.up.copy(fr.n).applyAxisAngle(fr.t, Math.sin(t * 0.25) * 0.15);
+    camera.lookAt(pointAt(Math.min(1, camU + 0.02)));
+    camera.fov = THREE.MathUtils.lerp(camera.fov, mode === "scanning" ? 92 : 68, 0.06);
+    camera.updateProjectionMatrix();
+
+    // streaks stream past; faster while scanning
+    const sv = mode === "scanning" ? 0.09 : 0.012;
+    for (let i = 0; i < STREAKS; i++) {
+      const s = streakData[i];
+      s.u -= sv * dt * (0.6 + (i % 5) * 0.2);
+      if (s.u < camU - 0.01 || s.u > camU + 0.3) s.u = camU + 0.02 + Math.random() * 0.28;
+      const f = frameAt(s.u), c = pointAt(s.u);
+      const off = tmp.copy(f.n).multiplyScalar(Math.cos(s.a) * s.r).addScaledVector(f.b, Math.sin(s.a) * s.r);
+      const a = c.clone().add(off), b = a.clone().addScaledVector(f.t, mode === "scanning" ? -2.2 : -0.4);
+      streakPos.set([a.x, a.y, a.z, b.x, b.y, b.z], i * 6);
+    }
+    streakGeo.attributes.position.needsUpdate = true;
+    streakMat.opacity = mode === "scanning" ? 0.85 : 0.35;
+
+    // gates turn; labels show only for the stretch ahead
+    for (const key in gates) {
+      const gt = gates[key];
+      gt.hex.rotation.z += 0.002;
+      gt.ticks.rotation.z -= 0.004;
+      const d = gt.ev.u - camU;
+      // only the gate right ahead speaks, so labels never stack
+      gt.el.style.opacity = d > -0.006 && d < 0.06 ? 1 : 0;
+      if (gt.imgEl) gt.imgEl.style.opacity = d > -0.01 && d < 0.075 ? 1 : 0;
+    }
+
+    // bots circle through the first-five-seconds stretch
+    for (const b of bolts) {
+      b.mesh.visible = mode === "tour" || mode === "done";
+      if (!b.mesh.visible) continue;
+      b.u += b.speed * dt * 0.25;
+      if (b.u > buyersU + 0.03) b.u -= 0.07;
+      const f = frameAt(b.u), c = pointAt(b.u);
+      b.a += dt * 0.8;
+      b.mesh.position.copy(c).addScaledVector(f.n, Math.cos(b.a) * b.r).addScaledVector(f.b, Math.sin(b.a) * b.r);
+      b.mesh.lookAt(b.mesh.position.clone().add(f.t));
+    }
+
+    // the exit bursts once the camera reaches it
+    if (burst && burst.fired) {
+      const age = t - burst.fired, arr = burst.points.geometry.attributes.position.array;
+      burst.vel.forEach((v, i) => { arr[i * 3] = v.x * age; arr[i * 3 + 1] = v.y * age; arr[i * 3 + 2] = v.z * age; });
+      burst.points.geometry.attributes.position.needsUpdate = true;
+      burst.points.material.opacity = Math.max(0, 1 - age * 0.45);
+    }
+
     composer.render();
     labelRenderer.render(scene, camera);
-    raf = requestAnimationFrame(frame);
+    requestAnimationFrame(frame);
   }
-  let raf = requestAnimationFrame(frame);
+  requestAnimationFrame(frame);
 
   new ResizeObserver(() => {
     [W, H] = size(); if (!W || !H) return;
     renderer.setSize(W, H); composer.setSize(W, H); labelRenderer.setSize(W, H);
     camera.aspect = W / H; camera.updateProjectionMatrix();
-    camera.position.z = W < 500 ? 16 : 13;
   }).observe(container);
 
   idle();
-  return { idle, reveal, result, setScanning, setImage, setSymbol };
+  return { idle, reveal, result, setScanning, setImage, setSymbol, replay: startTour };
 }

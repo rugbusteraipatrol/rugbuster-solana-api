@@ -162,8 +162,12 @@
   /* 3D trace */
   .hud.three svg { display: none; }
   .t3d, .t3d-labels { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
-  .t3d-labels { pointer-events: auto; cursor: grab; }
-  .t3d-labels:active { cursor: grabbing; }
+  .t3d-labels { pointer-events: auto; cursor: pointer; }
+  .tt-label { font: 600 11px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); text-align: center; white-space: nowrap; text-shadow: 0 0 8px #000, 0 0 2px #000; transition: opacity .35s; }
+  .tt-label i { font-style: normal; display: block; color: var(--c, var(--muted)); opacity: .8; }
+  .tt-label b { display: block; font: 700 15px var(--mono); letter-spacing: .04em; text-transform: none; color: var(--text); margin-top: 3px; }
+  .tt-img { transition: opacity .35s; }
+  .tt-img .t3d-hex { --s: 78px; }
   .t3d-labels > div { pointer-events: none; }
   .t3d-label { font: 600 10px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); text-align: center; white-space: nowrap; text-shadow: 0 0 6px #000, 0 0 2px #000; }
   .t3d-label i { font-style: normal; display: block; }
@@ -310,7 +314,7 @@
 
         <g id="nodes"></g>
       </svg>
-      <div class="hud-over"><div class="pct"><span id="ovPct">SCAN 000%</span><div class="bar" id="ovBar"></div></div><div class="net">MAINNET // x402</div><div class="drag">drag to rotate</div><div class="clk" id="ovClk">T+00:00.0</div></div>
+      <div class="hud-over"><div class="pct"><span id="ovPct">SCAN 000%</span><div class="bar" id="ovBar"></div></div><div class="net">MAINNET // x402</div><div class="drag">click to replay</div><div class="clk" id="ovClk">T+00:00.0</div></div>
       <div class="scanline"></div>
     </div>
 
@@ -530,6 +534,7 @@
     return {
       verdictColor: { DANGER: COLORS.danger, WARN: COLORS.warn, GOOD: COLORS.good }[d.label] || COLORS.muted,
       symbol: (d.token_symbol || short(d.address) || "token").slice(0, 12),
+      label: d.label, score: d.risk_score,
       nodes: {
         funding: { color: fr.color, value: fr.value + (fr.edge ? ` · ${fr.edge}` : ""), lit: cc.funding?.status === "ok" },
         creator,
