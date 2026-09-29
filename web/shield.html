@@ -432,8 +432,10 @@
       particle(p, col, 1.2 + i * 0.1, i * 0.2);
       const g = el("g", { class: "fade-in", style: `animation-delay:${0.3 + i * 0.12}s` }, nodesG);
       el("circle", { cx: x, cy: y, r: 7, fill: b.kind === "bot" ? "rgba(255,61,110,.18)" : "#0d0b17", stroke: col, "stroke-width": 2, filter: "url(#glow)" }, g);
-      const ox = Math.cos(a) * 18, oy = Math.sin(a) * 18 + 4;
-      const t = el("text", { x: x + ox, y: y + oy, "text-anchor": Math.cos(a) > 0.3 ? "start" : Math.cos(a) < -0.3 ? "end" : "middle", class: "elabel", fill: col }, g);
+      let ox = Math.cos(a) * 18, oy = Math.sin(a) * 18 + 4;
+      let anchor = Math.cos(a) > 0.3 ? "start" : Math.cos(a) < -0.3 ? "end" : "middle";
+      if (x > 520) { anchor = "middle"; ox = 0; oy = -14; } // keep the label inside the frame
+      const t = el("text", { x: x + ox, y: y + oy, "text-anchor": anchor, class: "elabel", fill: col }, g);
       t.textContent = (b.kind === "bot" ? "bot " : "") + b.seconds_after_creation + "s";
     });
 
