@@ -266,9 +266,9 @@
           <text id="coreSym" x="300" y="316" text-anchor="middle" class="nval" style="font-size:16px">— — —</text>
         </g>
         <g id="coreCap" opacity="0" style="transition:opacity .8s">
-          <rect x="222" y="376" width="156" height="44" rx="3" fill="#07060d" fill-opacity=".85" stroke="#231d3d"/>
-          <text id="capLabel" x="300" y="394" text-anchor="middle" class="nlabel">token</text>
-          <text id="capSym" x="300" y="412" text-anchor="middle" class="nval">—</text>
+          <text x="300" y="38" text-anchor="middle" class="nval" style="font-size:17px;letter-spacing:.08em">
+            <tspan id="capLabel">TOKEN</tspan><tspan fill="#5b5675"> · </tspan><tspan id="capSym">—</tspan>
+          </text>
         </g>
         <g id="nodes"></g>
       </svg>
@@ -455,7 +455,10 @@
     $("capLabel").textContent = d.label || "token";
     $("capLabel").setAttribute("style", `fill:${vColor}`);
     $("capSym").textContent = (d.token_symbol || short(d.address) || "").slice(0, 16);
-    $("capSym").setAttribute("style", `fill:${vColor}`);
+    $("capSym").setAttribute("style", "fill:#ece9f7");
+    $("coreCap").setAttribute("opacity", "1");
+    $("coreTop").textContent = "";
+    $("coreSym").setAttribute("y", "306");
     if (coreImageReady) showCoreImage();
   }
 
@@ -496,7 +499,7 @@
 
   function resetCore() {
     $("coreImg").setAttribute("opacity", "0"); $("coreImg").removeAttribute("href");
-    $("coreCap").setAttribute("opacity", "0"); $("coreText").setAttribute("opacity", "1");
+    $("coreCap").setAttribute("opacity", "0"); $("coreText").setAttribute("opacity", "1"); $("coreSym").setAttribute("y", "316");
     $("coreHex").setAttribute("stroke", "url(#sol)");
     $("coreSym").textContent = "— — —"; $("coreSym").removeAttribute("style"); $("coreSym").setAttribute("style", "font-size:16px");
     $("coreTop").textContent = "token";
