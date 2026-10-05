@@ -46,3 +46,13 @@ def test_no_readable_image_is_a_404(client, monkeypatch):
     monkeypatch.setattr(api, "fetch_token_meta", lambda a: {"image_candidates": ["https://img.example/a.png"]})
     monkeypatch.setattr(api, "fetch_public_image", lambda url: None)
     assert client.get(f"/token-image?address={MINT}").status_code == 404
+
+
+def test_feed_reason_names_the_creator_exit():
+    position = {"status": "sold", "share_at_creation_pct": 35.5, "sold_after_seconds": 22}
+    assert api.feed_reason(position, None) == "Creator bought 35.5% at creation and sold it after 22s."
+
+
+def test_feed_reason_falls_back_to_bots_then_nothing():
+    assert api.feed_reason(None, {"status": "sniped", "buyers_within_window": 7, "window_seconds": 5}) == "7 wallets bought in the first 5s."
+    assert api.feed_reason({"status": "none"}, {"status": "clean"}) is None

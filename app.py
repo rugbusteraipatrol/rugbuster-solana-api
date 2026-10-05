@@ -643,6 +643,90 @@ def token_image():
     return jsonify({"ok": False, "error": "no readable image for this token"}), 404
 
 
+def _span(seconds: float) -> str:
+    if seconds < 90:
+        return f"{round(seconds)}s"
+    if seconds < 5400:
+        return f"{round(seconds / 60)} min"
+    if seconds < 172800:
+        return f"{round(seconds / 3600)} h"
+    return f"{round(seconds / 86400)} days"
+
+
+def feed_reason(position: Any, snipe: Any) -> str | None:
+    """One line on why a token in the feed stands out, from fields already stored."""
+    position = position if isinstance(position, dict) else {}
+    snipe = snipe if isinstance(snipe, dict) else {}
+    share = position.get("share_at_creation_pct")
+    if not isinstance(share, (int, float)):
+        share = position.get("peak_share_pct")
+    if position.get("status") == "sold" and isinstance(share, (int, float)) and share >= 1:
+        after = position.get("sold_after_seconds")
+        when = f" {'within' if position.get('sold_after_is_upper_bound') else 'after'} {_span(after)}" if isinstance(after, (int, float)) else ""
+        return f"Creator bought {share:.1f}% at creation and sold it{when}."
+    if snipe.get("status") == "sniped":
+        return f"{snipe.get('buyers_within_window')} wallets bought in the first {snipe.get('window_seconds')}s."
+    if position.get("status") == "holding" and isinstance(share, (int, float)) and share >= 1:
+        return f"Creator still holds {share:.1f}% bought at creation."
+    return None
+
+
+_feed_cache: dict[str, Any] = {"at": 0.0, "items": []}
+_feed_lock = threading.Lock()
+
+
+@app.get("/feed")
+def feed():
+    """The latest tokens anyone scanned here, newest first, one row per token.
+
+    Only what /score already answered and stored: verdict, score, name and a
+    one-line reason. Nothing about who asked.
+    """
+    with _feed_lock:
+        if time.time() - _feed_cache["at"] < 30:
+            items = _feed_cache["items"]
+        else:
+            items = None
+    if items is None:
+        with db_connect() as connection:
+            with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT * FROM (
+                      SELECT DISTINCT ON (contract_address)
+                             contract_address, label, risk_score, token_name, token_symbol,
+                             created_at, creator_position, launch_snipe
+                      FROM solana_live_cache
+                      WHERE created_at >= now() - interval '48 hours'
+                      ORDER BY contract_address, created_at DESC
+                    ) latest
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                    """
+                )
+                rows = cursor.fetchall()
+        items = [
+            {
+                "address": row["contract_address"],
+                "label": row["label"],
+                "risk_score": float(row["risk_score"]) if row["risk_score"] is not None else None,
+                "name": row["token_name"],
+                "symbol": row["token_symbol"],
+                "scanned_at": row["created_at"].isoformat(),
+                "reason": feed_reason(row["creator_position"], row["launch_snipe"]),
+            }
+            for row in rows
+        ]
+        with _feed_lock:
+            _feed_cache.update({"at": time.time(), "items": items})
+    label = str(request.args.get("label") or "").upper()
+    if label in {"DANGER", "WARN", "GOOD"}:
+        items = [item for item in items if item["label"] == label]
+    response = jsonify({"ok": True, "items": items[:50]})
+    response.headers["Cache-Control"] = "public, max-age=30"
+    return response
+
+
 @app.get("/shield")
 def shield_page():
     """Creator Trace: the browser front end for /score and /x402/score."""
