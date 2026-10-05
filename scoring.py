@@ -471,7 +471,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.09.22"
+SCORING_VERSION = "2026.10.05"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -574,6 +574,8 @@ EVIDENCE_NEUTRAL_FLAGS = {
     "concentration_critical_override",
     "curated_mint_administrative_flags_only",
     "non_conclusive_signals_capped_at_warn",
+    "regulated_issuer_controls_capped_at_warn",
+    "regulated_issuer_recognised",
     "identity_mismatch_capped_at_warn",
     "live_scan_cannot_clear_token",
     "rugcheck_returned_no_holder_or_liquidity_data",
@@ -798,6 +800,40 @@ def independent_serious_signals(flags: list[str]) -> list[str]:
 CURATED_ADMINISTRATIVE_RISK = 20
 
 
+# Issuers of regulated tokenized securities, keyed by the address that holds
+# both the freeze authority and the permanent delegate of every token they
+# issue. A tokenized stock must let its issuer freeze a wallet and move tokens
+# out of it -- that is how a court order or a corporate action is carried out --
+# so on these tokens those powers are expected, not a sign of a rug.
+#
+# Verified 2026-10-05: all 1,170 Solana mints Backpack lists as stocks (symbol
+# *.US) at https://api.backpack.exchange/api/v1/assets carry this address as
+# both freeze authority and permanent delegate, read on chain
+# (qa/verify_regulated_issuers.py re-checks it).
+#
+# The powers stay real exposure for a holder, so recognition caps the verdict
+# at WARN and never clears a token. Anyone can name this address as the
+# authority of their own mint, but doing so hands these powers to the issuer,
+# not to themselves; a creator exit or a rug history still goes past WARN.
+KNOWN_REGULATED_ISSUER_AUTHORITIES = {
+    "2cVYpagTt7ZGc3mmTXBa7fAznUtx5DUu6aCq8uVDaf4a": "Backpack Securities",
+}
+# What a regulated issuer's own controls look like in the flags. Thin DEX
+# liquidity is included: a tokenized stock trades mainly on its issuer's venue.
+REGULATED_ISSUER_RISK_ITEMS = NON_CONCLUSIVE_RISK_ITEMS | {"permanent_control_enabled", "low_liquidity"}
+
+
+def regulated_issuer(report: dict[str, Any]) -> str | None:
+    """The regulated issuer that controls this mint, when we know it."""
+    token = report.get("token") if isinstance(report.get("token"), dict) else {}
+    freeze = token.get("freezeAuthority") or report.get("freezeAuthority")
+    extensions = report.get("token_extensions") if isinstance(report.get("token_extensions"), dict) else {}
+    delegate = (extensions.get("permanentDelegate") or {}).get("delegate") if isinstance(extensions.get("permanentDelegate"), dict) else None
+    if freeze and freeze == delegate:
+        return KNOWN_REGULATED_ISSUER_AUTHORITIES.get(str(freeze))
+    return None
+
+
 def is_curated_canonical_mint(report: dict[str, Any]) -> bool:
     """Is this mint one we have identified by hand?
 
@@ -837,6 +873,7 @@ def apply_verdict_ceilings(
     rugged: bool,
     curated: bool,
     unsupported: tuple[str, ...] | list[str] = (),
+    regulated: bool = False,
 ) -> tuple[int, list[str]]:
     """The rules that decide how far a verdict may go, applied in one place.
 
@@ -860,6 +897,12 @@ def apply_verdict_ceilings(
     if not rugged and non_conclusive_flags_only(judged) and risk > MAX_NON_CONCLUSIVE_RISK:
         risk = MAX_NON_CONCLUSIVE_RISK
         flags.append("non_conclusive_signals_capped_at_warn")
+
+    # A regulated issuer's own controls stop at WARN: expected for a tokenized
+    # security, still control over what the holder owns.
+    if not rugged and regulated and judged             and all(item in REGULATED_ISSUER_RISK_ITEMS for item in judged)             and risk > MAX_NON_CONCLUSIVE_RISK:
+        risk = MAX_NON_CONCLUSIVE_RISK
+        flags.append("regulated_issuer_controls_capped_at_warn")
 
     # A name collision on its own stops at WARN. It is a reason to look, not a
     # finding about the token, and DANGER would claim more than it establishes.
@@ -1021,9 +1064,13 @@ def score_live_rugcheck_report(
     # below unless something independent (a creator exit, a history) is there.
     risk, flags = apply_launch_snipe(risk, flags, snipe)
 
+    issuer = regulated_issuer(report)
+    if issuer:
+        flags.append("regulated_issuer_recognised")
     risk, flags = apply_verdict_ceilings(
         _clamp(risk), flags, rugged=rugged,
         curated=is_curated_canonical_mint(report), unsupported=unsupported,
+        regulated=bool(issuer),
     )
 
     if rugged:

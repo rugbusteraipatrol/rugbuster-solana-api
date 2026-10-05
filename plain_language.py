@@ -213,6 +213,13 @@ def _finding_sentence(
             "issuer. The powers are real and are still listed below.",
             FINDING,
         )
+    if "regulated_issuer_controls_capped_at_warn" in flags:
+        return (
+            "A tokenized security from a regulated issuer. The issuer can freeze "
+            "wallets, move tokens out of any wallet and mint more: expected for "
+            "this kind of asset, and still control over what you hold.",
+            FINDING,
+        )
     if "non_conclusive_signals_capped_at_warn" in flags:
         return (
             "Everything found here is a disclosure about who controls the token "
