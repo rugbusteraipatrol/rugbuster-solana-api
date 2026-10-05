@@ -120,7 +120,8 @@ def read(
                 if pool_threshold and balance >= pool_threshold:
                     continue  # the bonding curve or pool account, not a buyer
                 first_holders[owner] = {"wallet": owner, "seconds_after_creation": when - creation_time,
-                                        "share_pct": round(100.0 * balance / supply, 3) if supply else None}
+                                        "share_pct": round(100.0 * balance / supply, 3) if supply else None,
+                                        "signature": signature["signature"]}
         buyers = list(first_holders.values())
         for buyer in buyers[:MAX_WALLETS_CHECKED]:
             history = call("getSignaturesForAddress", [buyer["wallet"], {"limit": 1000}]) or []
@@ -136,6 +137,7 @@ def read(
             "wallets_checked": min(len(buyers), MAX_WALLETS_CHECKED),
             "first_buyers": buyers,
             "creation_time": creation_time,
+            "creation_signature": ordered[0].get("signature"),
             "observed_at": datetime.now(timezone.utc).isoformat(),
             "source": "solana_rpc",
             "lookup_seconds": round(time.monotonic() - started, 2),

@@ -84,6 +84,9 @@ def test_three_wallets_in_the_creation_second_is_sniped_and_bots_are_counted():
     assert got["bot_wallets_among_checked"] == 3
     assert [b["wallet"] for b in got["first_buyers"]] == ["botA", "botB", "human", "botC"]
     assert got["first_buyers"][3]["seconds_after_creation"] == 3
+    # each buyer and the creation carry the transaction behind them
+    assert got["creation_signature"] == "s0"
+    assert [b["signature"] for b in got["first_buyers"]] == ["s0", "s0", "s0", "s1"]
 
 
 def test_two_early_buyers_is_clean():

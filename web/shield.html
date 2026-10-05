@@ -145,6 +145,9 @@
   .fact { border-left: 3px solid var(--line); padding: 3px 0 3px 12px; }
   .fact b { display: block; font: 700 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
   .fact span { color: var(--muted); font-size: 16px; }
+  .fact .proof { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; font: 600 12px var(--mono); letter-spacing: .04em; }
+  .fact .proof a { color: var(--cyan); text-decoration: none; }
+  .fact .proof a:hover, .fact .proof a:focus-visible { text-decoration: underline; }
   .f-danger { border-color: var(--danger); } .f-danger b { color: var(--danger); }
   .f-warn { border-color: var(--warn); } .f-warn b { color: var(--warn); }
   .f-good { border-color: var(--good); } .f-good b { color: var(--good); }
@@ -704,13 +707,21 @@
   }
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+  // the transaction behind a finding, so a reader can check it on Solscan instead of trusting us
+  const txLink = (label, sig) => (sig ? { label, href: `https://solscan.io/tx/${sig}` } : null);
+  const acctLink = (label, addr) => (addr ? { label, href: `https://solscan.io/account/${addr}` } : null);
+
   function facts(d) {
     const out = [], cp = d.creator_position || {}, ls = d.launch_snipe || {}, dh = d.deployer_history || {};
     const share = typeof cp.share_at_creation_pct === "number" ? cp.share_at_creation_pct : cp.peak_share_pct;
-    if (cp.status === "sold") out.push(["danger", "Creator sold out", `Bought ${share.toFixed(1)}% at creation, sold ${Math.round(cp.sold_pct_of_peak ?? 100)}% ${cp.sold_after_is_upper_bound ? "within" : "after"} ${cp.sold_after_seconds}s.`]);
-    else if (cp.status === "holding") out.push([share >= 1 ? "warn" : "muted", "Creator still holds", `${(cp.current_share_pct ?? share).toFixed(1)}% of supply.`]);
+    if (cp.status === "sold") out.push(["danger", "Creator sold out", `Bought ${share.toFixed(1)}% at creation, sold ${Math.round(cp.sold_pct_of_peak ?? 100)}% ${cp.sold_after_is_upper_bound ? "within" : "after"} ${cp.sold_after_seconds}s.`,
+      [txLink("buy tx", cp.first_buy_signature), txLink("sell tx", cp.exit_signature)]]);
+    else if (cp.status === "holding") out.push([share >= 1 ? "warn" : "muted", "Creator still holds", `${(cp.current_share_pct ?? share).toFixed(1)}% of supply.`,
+      [txLink("buy tx", cp.first_buy_signature)]]);
     else if (cp.status === "none") out.push(["good", "Creator position", "The creator's own wallet never held this token."]);
-    if (ls.status === "sniped") out.push(["warn", "Launch taken by bots", `${ls.buyers_within_window} wallets bought in the first ${ls.window_seconds}s; ${ls.bot_wallets_among_checked} of ${ls.wallets_checked} checked are bot wallets.`]);
+    if (ls.status === "sniped") out.push(["warn", "Launch taken by bots", `${ls.buyers_within_window} wallets bought in the first ${ls.window_seconds}s; ${ls.bot_wallets_among_checked} of ${ls.wallets_checked} checked are bot wallets.`,
+      [txLink("creation tx", ls.creation_signature),
+       ...[...new Set((ls.first_buyers || []).map((b) => b.signature).filter(Boolean))].slice(0, 3).map((sig, i) => txLink(`buy ${i + 1}`, sig))]]);
     else if (ls.status === "clean") out.push(["good", "Launch", `No crowd in the first ${ls.window_seconds}s.`]);
     if (typeof dh.prior_rugs_on_record === "number") out.push([dh.prior_rugs_on_record > 0 ? "danger" : "muted", "Creator's record", dh.prior_rugs_on_record > 0 ? `${dh.prior_rugs_on_record} earlier token(s) rugged.` : "No earlier rugs on record."]);
     const cc = d.chain_checks || {};
@@ -729,7 +740,8 @@
     }
     if (cc.funding?.status === "ok") {
       const f = cc.funding;
-      out.push(["muted", "Creator funding", `${f.amount_sol} SOL from ${short(f.funder)}${typeof f.seconds_before_creation === "number" ? `, ${ago(f.seconds_before_creation)} before the token` : ""}${f.method === "durable_nonce_withdrawal" ? " (durable-nonce withdrawal)" : ""}.`]);
+      out.push(["muted", "Creator funding", `${f.amount_sol} SOL from ${short(f.funder)}${typeof f.seconds_before_creation === "number" ? `, ${ago(f.seconds_before_creation)} before the token` : ""}${f.method === "durable_nonce_withdrawal" ? " (durable-nonce withdrawal)" : ""}.`,
+        [txLink("funding tx", f.signature), acctLink("funder", f.funder)]]);
     } else if (cc.funding?.status === "busy_wallet") {
       out.push(["warn", "Creator funding", "The creator wallet has 1,000+ transactions; first funding out of reach."]);
     }
@@ -745,7 +757,10 @@
         <div style="min-width:0"><div class="v-label" style="color:${color}">${esc(d.label || "UNKNOWN")}${d.token_symbol ? `<span class="v-sym">${esc(d.token_symbol)}</span>` : ""}</div>
         <div class="v-name">${esc(name || short(d.address))} · ${esc(short(d.address))}</div></div></div>
       ${d.verdict_summary ? `<p class="v-sum">${esc(d.verdict_summary)}</p>` : d.note ? `<p class="v-sum">${esc(d.note)}</p>` : ""}
-      <div class="facts">${facts(d).map(([t, h, b]) => `<div class="fact f-${t}"><b>${esc(h)}</b><span>${esc(b)}</span></div>`).join("")}</div>
+      <div class="facts">${facts(d).map(([t, h, b, proof]) => {
+        const links = (proof || []).filter(Boolean);
+        return `<div class="fact f-${t}"><b>${esc(h)}</b><span>${esc(b)}</span>${links.length ? `<span class="proof">${links.map((l) => `<a href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)} ↗</a>`).join("")}</span>` : ""}</div>`;
+      }).join("")}</div>
       ${nc.length ? `<details class="nc"><summary>Not checked (${nc.length})</summary><ul>${nc.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}
       ${receipt ? `<div class="paid">PAID 0.01 USDC · x402 on Solana<br><a style="color:inherit" href="https://solscan.io/tx/${esc(receipt.transaction)}" target="_blank" rel="noopener">tx ${esc(short(receipt.transaction))} ↗</a></div>` : ""}
       <div class="links">

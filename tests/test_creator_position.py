@@ -129,6 +129,9 @@ def test_an_instant_exit_is_read_as_sold_with_its_timing():
     assert got["current_share_pct"] == 0.0
     assert got["sold_pct_of_peak"] == 100.0
     assert got["sold_after_seconds"] == 46  # the sale, not the account close at 1050
+    # the transactions behind the finding, so a reader can open them
+    assert got["first_buy_signature"] == "create"
+    assert got["exit_signature"] == "sell"
     assert got["token_program"] == "token2022"
     assert got["base_rate"]["n"] == 2785
     # both programs' accounts are asked before giving up, only one answered
@@ -286,6 +289,8 @@ def test_an_exit_hidden_between_unread_transactions_is_an_upper_bound():
     assert got["status"] == "sold"
     assert got["sold_after_seconds"] == 8 * 3600
     assert got["sold_after_is_upper_bound"] is True
+    # the reading after the gap is not the exit itself, so no exit link is given
+    assert got["exit_signature"] is None
     payload = {"label": "DANGER", "risk_flags": ["creator_bought_at_creation", "creator_sold_launch_allocation"],
                "creator_position": got}
     payload["evidence"] = build_evidence(payload)

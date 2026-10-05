@@ -138,9 +138,10 @@ def lookup(
             return unavailable("only failed transactions on the creator's token account", creator)
         truncated = len(ordered) > MAX_TRANSACTIONS
         picked = ordered if not truncated else ordered[:2] + ordered[-2:]
-        # (blockTime, balance, index in the full history) -- the index tells us
-        # whether unread transactions sit between two readings.
-        points: list[tuple[int | None, float, int]] = []
+        # (blockTime, balance, index in the full history, signature) -- the index
+        # tells us whether unread transactions sit between two readings; the
+        # signature lets a reader open the transaction behind each finding.
+        points: list[tuple[int | None, float, int, str]] = []
         index_of = {s["signature"]: i for i, s in enumerate(ordered)}
         for signature in picked:
             tx = call(
@@ -149,12 +150,12 @@ def lookup(
             )
             balance = _creator_balance(tx or {}, creator, mint)
             if balance is not None:
-                points.append((signature.get("blockTime"), balance, index_of[signature["signature"]]))
+                points.append((signature.get("blockTime"), balance, index_of[signature["signature"]], signature["signature"]))
         if not points:
             return unavailable("creator balance not readable from transactions", creator)
-        first_time, first_balance, _ = points[0]
-        peak = max(balance for _, balance, _ in points)
-        last_time, last_balance, _ = points[-1]
+        first_time, first_balance, _, first_signature = points[0]
+        peak = max(point[1] for point in points)
+        last_time, last_balance, _, _ = points[-1]
         if peak <= 0:
             status = "none"
         elif last_balance <= peak * (1 - SOLD_THRESHOLD):
@@ -166,14 +167,16 @@ def lookup(
         # dust transfer or an account close days later. If unread transactions
         # sit between that reading and the one before it, the exit happened
         # somewhere in that gap and the time is an upper bound.
-        sold_after, sold_after_is_upper_bound = None, False
+        sold_after, sold_after_is_upper_bound, exit_signature = None, False, None
         if status == "sold" and first_time:
             peak_at = max(range(len(points)), key=lambda i: points[i][1])
             for i in range(peak_at + 1, len(points)):
-                t, balance, idx = points[i]
+                t, balance, idx, sig = points[i]
                 if balance <= peak * (1 - SOLD_THRESHOLD):
                     sold_after = (t - first_time) if t else None
                     sold_after_is_upper_bound = idx - points[i - 1][2] > 1
+                    # only when this reading is the exit itself, not a later one
+                    exit_signature = None if sold_after_is_upper_bound else sig
                     break
         return {
             "status": status,
@@ -187,6 +190,8 @@ def lookup(
             "last_change_at": last_time,
             "sold_after_seconds": sold_after,
             "sold_after_is_upper_bound": sold_after_is_upper_bound,
+            "first_buy_signature": first_signature,
+            "exit_signature": exit_signature,
             "transactions_on_record": len(ordered),
             "observed_at": observed_at,
             "source": "solana_rpc",
