@@ -254,7 +254,9 @@ export function createTrace(container) {
     core.classList.remove("dissolved");
   }
 
-  function setImage(src) {
+  // pixelSrc: a copy of the same image served with CORS (our /token-image), so the
+  // canvas can read it even when the image host sends no CORS header
+  function setImage(src, pixelSrc) {
     const img = core.querySelector("img");
     const token = ++portraitToken;
     clearPortrait();
@@ -276,7 +278,8 @@ export function createTrace(container) {
     // read, so the particle copy asks under its own URL
     const url = new URL(src, location.href);
     url.searchParams.set("rb_px", "1");
-    probe.src = url.href;
+    if (pixelSrc) probe.onerror = () => { if (token === portraitToken && probe.src !== url.href) probe.src = url.href; };
+    probe.src = pixelSrc || url.href;
   }
   function setSymbol(text) { core.querySelector("span").textContent = text || "MINT"; }
 

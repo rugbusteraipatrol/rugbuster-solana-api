@@ -1,13 +1,15 @@
+import ipaddress
 import json
 import os
 import re
+import socket
 import sys
 import threading
 import time
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.parse import quote, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 import psycopg2
 from flask import Flask, jsonify, make_response, request, send_from_directory
@@ -567,6 +569,78 @@ def token_meta():
     response = jsonify({"ok": True, **fetch_token_meta(address)})
     response.headers["Cache-Control"] = "public, max-age=3600"
     return response
+
+
+TOKEN_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"}
+TOKEN_IMAGE_MAX_BYTES = 2_000_000
+
+
+def _is_public_https(url: str) -> bool:
+    """Only fetch https URLs whose host resolves to public addresses.
+
+    The image URL comes from token metadata, which anyone who mints a token
+    writes, so it must never reach an internal address on our side.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+    except OSError:
+        return False
+    return bool(infos) and all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
+
+
+class _PublicRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_public_https(newurl):
+            raise URLError("redirect to a non-public address")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_image_opener = build_opener(_PublicRedirects())
+
+
+def fetch_public_image(url: str) -> tuple[bytes, str] | None:
+    if not _is_public_https(url):
+        return None
+    req = Request(url, headers={"User-Agent": "RugBuster/1.0 (+https://rugbuster.io)", "Accept": "image/*"})
+    try:
+        with _image_opener.open(req, timeout=6) as response:
+            ctype = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if ctype not in TOKEN_IMAGE_TYPES:
+                return None
+            body = response.read(TOKEN_IMAGE_MAX_BYTES + 1)
+    except (HTTPError, URLError, TimeoutError, ValueError, OSError):
+        return None
+    if not body or len(body) > TOKEN_IMAGE_MAX_BYTES:
+        return None
+    return body, ctype
+
+
+@app.get("/token-image")
+def token_image():
+    """The token's own image, served with CORS so a page can draw it as particles.
+
+    Many image hosts send no CORS header, and a canvas cannot read pixels from
+    such an image. Only the image named in the mint's metadata is fetched.
+    """
+    address = str(request.args.get("address") or "").strip()
+    if not is_valid_solana_mint(address):
+        return jsonify({"ok": False, "error": "invalid solana mint address"}), 400
+    for url in fetch_token_meta(address).get("image_candidates") or []:
+        got = fetch_public_image(url)
+        if not got:
+            continue
+        body, ctype = got
+        response = make_response(body)
+        response.headers["Content-Type"] = ctype
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # an SVG opened directly must not run anything on this origin
+        response.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox"
+        return response
+    return jsonify({"ok": False, "error": "no readable image for this token"}), 404
 
 
 @app.get("/shield")

@@ -565,7 +565,7 @@
   window.addEventListener("trace3d-ready", () => {
     if (lastData) window.trace3d.result(buildModel(lastData));
     const src = $("coreImg").getAttribute("href");
-    if (coreImageReady && src) window.trace3d.setImage(src);
+    if (coreImageReady && src) window.trace3d.setImage(src, coreImageMint ? `${API}/token-image?address=${coreImageMint}` : null);
   });
 
   function resultGraph(d) {
@@ -652,7 +652,7 @@
   }
 
   // ---------- token image in the core ----------
-  let coreImageReady = false, imageToken = 0;
+  let coreImageReady = false, imageToken = 0; let coreImageMint = null;
   function showCoreImage() {
     $("coreImg").setAttribute("opacity", "1");
     $("coreText").setAttribute("opacity", "0");
@@ -669,7 +669,7 @@
     });
   }
   async function loadCoreImage(mint) {
-    const token = ++imageToken; coreImageReady = false;
+    const token = ++imageToken; coreImageReady = false; coreImageMint = mint;
     try {
       const meta = await fetch(`${API}/token-meta?address=${mint}`).then((r) => r.json());
       for (const src of meta.image_candidates || []) {
@@ -678,7 +678,7 @@
           if (token !== imageToken) return;
           $("coreImg").setAttribute("href", src);
           coreImageReady = true;
-          window.trace3d?.setImage(src);
+          window.trace3d?.setImage(src, `${API}/token-image?address=${mint}`);
           if ($("hudState").textContent !== "scanning") showCoreImage();
           return;
         }
@@ -718,7 +718,7 @@
       [txLink("buy tx", cp.first_buy_signature), txLink("sell tx", cp.exit_signature)]]);
     else if (cp.status === "holding") out.push([share >= 1 ? "warn" : "muted", "Creator still holds", `${(cp.current_share_pct ?? share).toFixed(1)}% of supply.`,
       [txLink("buy tx", cp.first_buy_signature)]]);
-    else if (cp.status === "none") out.push(["good", "Creator position", "The creator's own wallet never held this token."]);
+    else if (cp.status === "none") out.push(["muted", "Creator position", "The creator's own wallet never held this token."]);
     if (ls.status === "sniped") out.push(["warn", "Launch taken by bots", `${ls.buyers_within_window} wallets bought in the first ${ls.window_seconds}s; ${ls.bot_wallets_among_checked} of ${ls.wallets_checked} checked are bot wallets.`,
       [txLink("creation tx", ls.creation_signature),
        ...[...new Set((ls.first_buyers || []).map((b) => b.signature).filter(Boolean))].slice(0, 3).map((sig, i) => txLink(`buy ${i + 1}`, sig))]]);
@@ -728,7 +728,8 @@
     const tone = (c) => (c === COLORS.danger ? "danger" : c === COLORS.warn ? "warn" : c === COLORS.good ? "good" : "muted");
     if (cc.contract?.status === "ok") {
       const k = cc.contract, kr = contractReading(k);
-      const bits = [k.mint_authority ? "can mint new tokens" : "cannot mint", k.freeze_authority ? "can freeze wallets" : "cannot freeze",
+      const bits = [...(k.extensions?.permanent_delegate ? ["can move tokens out of any wallet"] : []),
+        k.mint_authority ? "can mint new tokens" : "cannot mint", k.freeze_authority ? "can freeze wallets" : "cannot freeze",
         k.metadata_mutable ? "name and image can change" : "name and image fixed"];
       out.push([tone(kr.color), "Contract", `${bits.join(" · ")}. ${k.token_program}.`]);
     }
