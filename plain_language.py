@@ -194,6 +194,13 @@ def _finding_sentence(
     # found nothing to clear the token with, and this says we found something.
     if any(flag in HISTORY_FLAGS for flag in flags):
         return _history_sentence(history or {}), FINDING
+    if "young_token_launch_not_readable" in flags:
+        return (
+            "Too young to clear: who bought in its first seconds could not be "
+            "read, and nothing else checked here can stand in for that. Large "
+            "early wallets can still sell into buyers.",
+            REFUSAL,
+        )
     if "live_scan_cannot_clear_token" in flags:
         return (
             "Nothing here supports calling this token safe: it has almost no "

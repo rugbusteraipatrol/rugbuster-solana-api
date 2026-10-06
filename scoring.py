@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from typing import Any
 
 
@@ -273,6 +274,54 @@ def apply_launch_snipe(
     return _clamp(max(risk, LAUNCH_SNIPED_RISK)), flags
 
 
+# A young token whose first seconds we could not read is not cleared. Measured
+# 2026-10-06 on MUNK (AKJx...pump): the creator held 0.26% and was not the
+# seller, the launch read came back `unavailable` (over 1,000 transactions 52
+# minutes in), and a large wallet dumped the price from ~$90K to ~$30K. The
+# token scored GOOD 1 while one of our own checks had a gap -- the one claim
+# we make is that a gap is never shown as clean. Past a day the launch's
+# early wallets have mostly played out and many healthy tokens cross 1,000
+# transactions, so the rule is scoped to the first 24 hours.
+YOUNG_TOKEN_MAX_AGE_SECONDS = 24 * 3600
+
+
+def token_age_seconds(
+    report: dict[str, Any], position: dict[str, Any] | None, now: float | None = None
+) -> float | None:
+    """Seconds since creation: the creator's first balance, else RugCheck's
+    detection time. None when neither is readable."""
+    now = time.time() if now is None else now
+    created = None
+    if isinstance(position, dict):
+        created = _number(position.get("first_seen_at"))
+    if created is None:
+        detected = report.get("detectedAt")
+        if isinstance(detected, str) and detected:
+            try:
+                from datetime import datetime
+                # RugCheck sends nanoseconds; older Pythons parse at most six digits.
+                text = re.sub(r"(\.\d{6})\d+", r"\1", detected.replace("Z", "+00:00"))
+                created = datetime.fromisoformat(text).timestamp()
+            except ValueError:
+                created = None
+    if created is None or created <= 0:
+        return None
+    return max(0.0, now - created)
+
+
+def launch_gap_blocks_clean_verdict(
+    report: dict[str, Any], position: dict[str, Any] | None,
+    snipe: dict[str, Any] | None, now: float | None = None,
+) -> bool:
+    """True when the first-seconds read was attempted, failed, and the token is
+    under a day old. A missing read (no `snipe` passed) is not a gap: that
+    path never looked."""
+    if not isinstance(snipe, dict) or snipe.get("status") != "unavailable":
+        return False
+    age = token_age_seconds(report, position, now)
+    return age is not None and age < YOUNG_TOKEN_MAX_AGE_SECONDS
+
+
 def label_for_risk(risk: int) -> str:
     """The one place a number becomes a word."""
     return "GOOD" if risk < 35 else "WARN" if risk < 70 else "DANGER"
@@ -471,7 +520,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.10.05"
+SCORING_VERSION = "2026.10.06"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all
@@ -578,6 +627,7 @@ EVIDENCE_NEUTRAL_FLAGS = {
     "regulated_issuer_recognised",
     "identity_mismatch_capped_at_warn",
     "live_scan_cannot_clear_token",
+    "young_token_launch_not_readable",
     "rugcheck_returned_no_holder_or_liquidity_data",
     "too_few_holders_to_clear",
     "insufficient_liquidity_to_clear",
@@ -1092,6 +1142,10 @@ def score_live_rugcheck_report(
                 risk_score = max(risk_score, 50)
                 flags.append(reason)
                 flags.append("live_scan_cannot_clear_token")
+    if label == "GOOD" and not is_known_mint and launch_gap_blocks_clean_verdict(report, position, snipe):
+        label = "WARN"
+        risk_score = max(risk_score, 50)
+        flags.append("young_token_launch_not_readable")
 
     if rugged:
         label = "DANGER"

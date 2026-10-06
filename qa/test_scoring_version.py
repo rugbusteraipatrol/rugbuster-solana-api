@@ -36,8 +36,8 @@ SCORING_FILE = REPO_ROOT / "scoring.py"
 # Bump together with SCORING_VERSION. Take the new value from the failure
 # message after reviewing the diff, never from a passing run of an unreviewed
 # change.
-EXPECTED_VERSION = "2026.10.05"
-EXPECTED_FINGERPRINT = "20b3bc79043886ca"
+EXPECTED_VERSION = "2026.10.06"
+EXPECTED_FINGERPRINT = "15cb3a114fec60e3"
 
 
 def fingerprint_of(source: str) -> str:
