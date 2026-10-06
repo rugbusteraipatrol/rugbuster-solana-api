@@ -29,6 +29,7 @@ import chain_checks
 import creator_position as creator_position_module
 import x402_solana
 import launch_snipe as launch_snipe_module
+import perks as perks_module
 from scoring import (
     SCORING_VERSION,
     apply_deployer_history,
@@ -725,6 +726,22 @@ def feed():
     response = jsonify({"ok": True, "items": items[:50]})
     response.headers["Cache-Control"] = "public, max-age=30"
     return response
+
+
+@app.get("/perks")
+def perks():
+    """What a wallet unlocks in the app: Pro for SKR or Seeker Genesis Token holders.
+
+    A read of public balances, nothing more: no signature is verified here and
+    nothing of value is paid out on it, so a wrong answer costs at most a perk.
+    """
+    wallet = str(request.args.get("wallet") or "").strip()
+    if not is_valid_solana_mint(wallet):
+        return jsonify({"ok": False, "error": "invalid wallet address"}), 400
+    result = perks_module.perks_for(wallet)
+    response = jsonify({"ok": True, **result})
+    response.headers["Cache-Control"] = "private, max-age=300"
+    return response, (200 if result.get("checked") else 503)
 
 
 @app.get("/shield")
