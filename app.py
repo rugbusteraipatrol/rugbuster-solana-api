@@ -31,6 +31,7 @@ import creator_position as creator_position_module
 import x402_solana
 import launch_snipe as launch_snipe_module
 import perks as perks_module
+import push_alerts
 from scoring import (
     KNOWN_SOLANA_MINTS,
     SCORING_VERSION,
@@ -776,6 +777,78 @@ def shield_trace3d():
     response = send_from_directory(WEB_DIR, "trace3d.js", mimetype="text/javascript")
     response.headers["Cache-Control"] = "public, max-age=300"
     return response
+
+
+# --- push alerts: the phone is told the moment a tracked creator sells --------
+
+push_store = push_alerts.Store(db_connect)
+DEVICE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_:\-]{20,4096}$")
+
+
+def _watch_body() -> tuple[str, str] | None:
+    body = request.get_json(silent=True) or {}
+    device = str(body.get("device_token") or "").strip()
+    mint = str(body.get("mint") or "").strip()
+    if not DEVICE_TOKEN_RE.fullmatch(device) or not is_valid_solana_mint(mint):
+        return None
+    return device, mint
+
+
+@app.post("/watch")
+def watch():
+    parsed = _watch_body()
+    if parsed is None:
+        return jsonify({"ok": False, "error": "device_token and a solana mint are required"}), 400
+    device, mint = parsed
+    # Read the creator and their share from the same answer the app shows.
+    answer = app.test_client().get(f"/score?address={quote(mint)}").get_json(silent=True) or {}
+    position = answer.get("creator_position") or {}
+    creator = position.get("creator")
+    share = position.get("current_share_pct")
+    if share is None:
+        share = position.get("share_at_creation_pct")
+    if position.get("status") != "holding" or not creator or not isinstance(share, (int, float)) or share <= 0:
+        return jsonify({"ok": True, "watching": False, "mint": mint,
+                        "reason": f"creator position is {position.get('status') or 'unknown'}; nothing to watch for a sale"})
+    try:
+        outcome = push_store.add(device, mint, creator, answer.get("token_symbol"), float(share))
+    except Exception:
+        return jsonify({"ok": False, "error": "watch store unavailable"}), 503
+    if outcome == "limit":
+        return jsonify({"ok": False, "error": f"at most {push_alerts.MAX_WATCHES_PER_DEVICE} tracked tokens per device"}), 429
+    if outcome == "added_new_creator":
+        push_alerts.mark_webhook_dirty()
+    return jsonify({"ok": True, "watching": True, "mint": mint, "creator": creator, "share_pct": round(float(share), 3)})
+
+
+@app.post("/unwatch")
+def unwatch():
+    parsed = _watch_body()
+    if parsed is None:
+        return jsonify({"ok": False, "error": "device_token and a solana mint are required"}), 400
+    try:
+        push_store.remove(*parsed)
+    except Exception:
+        return jsonify({"ok": False, "error": "watch store unavailable"}), 503
+    return jsonify({"ok": True, "watching": False, "mint": parsed[1]})
+
+
+@app.post("/hooks/helius")
+def helius_hook():
+    secret = push_alerts.webhook_secret()
+    if not secret or request.headers.get("Authorization", "") != secret:
+        return jsonify({"ok": False}), 401
+    payload = request.get_json(silent=True)
+    try:
+        creators = sorted(push_alerts.creators_in(payload) & set(push_store.active_creators()))
+        sent = push_alerts.check(push_store, creators) if creators else 0
+    except Exception:
+        return jsonify({"ok": False}), 503
+    return jsonify({"ok": True, "creators": len(creators), "sent": sent})
+
+
+if DATABASE_URL and os.getenv("PUSH_ALERTS_ENABLED", "1") != "0" and push_alerts.service_account():
+    push_alerts.start_background(push_store)
 
 
 @app.get("/health")
