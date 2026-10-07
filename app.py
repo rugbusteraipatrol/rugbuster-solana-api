@@ -27,6 +27,7 @@ from freshness import (
 )
 import chain_checks
 import name_copies
+import copy_makers
 import creator_position as creator_position_module
 import x402_solana
 import launch_snipe as launch_snipe_module
@@ -277,9 +278,37 @@ def attach_name_copies(payload: dict[str, Any]) -> None:
     if address in KNOWN_SOLANA_MINTS:
         return
     try:
-        payload["name_copies"] = name_copies.read(address, payload.get("token_symbol"))
+        copies = name_copies.read(address, payload.get("token_symbol"))
     except Exception:  # noqa: BLE001 -- informational; never fail the answer
-        pass
+        return
+    if copies.get("status") == "ok" and copies.get("same_symbol_seen"):
+        try:
+            copies["makers"] = copy_makers_for(copies.get("symbol") or "")
+        except Exception:  # noqa: BLE001
+            pass
+    payload["name_copies"] = copies
+
+
+def copy_makers_for(symbol: str) -> dict[str, Any]:
+    """Who made the copies under this ticker: cached, or started in the background."""
+    url = chain_checks.rpc_url()
+    if not url:
+        return {"status": "unavailable", "reason": "SOLANA_RPC_URL not configured"}
+    call = chain_checks._rpc(url)
+    return copy_makers.get_or_start(
+        symbol,
+        mints=lambda s: name_copies.mints_under(s),
+        report=request_live_rugcheck,
+        funding=lambda creator, created_at: chain_checks.read_funding(call, creator, created_at),
+    )
+
+
+@app.get("/copies")
+def copies():
+    symbol = str(request.args.get("symbol") or "").strip()
+    if not symbol or len(symbol) > 32:
+        return jsonify({"ok": False, "error": "symbol is required"}), 400
+    return jsonify({"ok": True, **copy_makers_for(symbol)})
 
 
 def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -71,6 +71,30 @@ def _number(value: Any) -> float:
         return 0.0
 
 
+def mints_under(symbol: str, fetch: Fetch | None = None, now: float | None = None) -> dict[str, dict[str, float]]:
+    """Every Solana mint the search returns under exactly this ticker, with its
+    first pair time and summed 24 h volume. Raises when the search fails."""
+    now = time.time() if now is None else now
+    data = _search(symbol, fetch or _fetch, now)
+    pairs = data.get("pairs") if isinstance(data, dict) else None
+    if not isinstance(pairs, list):
+        raise ValueError("search returned no pair list")
+    mints: dict[str, dict[str, float]] = {}
+    for pair in pairs:
+        if not isinstance(pair, dict) or pair.get("chainId") != "solana":
+            continue
+        base = pair.get("baseToken") or {}
+        address = str(base.get("address") or "")
+        if not address or str(base.get("symbol") or "").strip().upper() != symbol.upper():
+            continue
+        entry = mints.setdefault(address, {"first_pair_at": 0.0, "volume_24h": 0.0})
+        created = _number(pair.get("pairCreatedAt")) / 1000.0
+        if created and (not entry["first_pair_at"] or created < entry["first_pair_at"]):
+            entry["first_pair_at"] = created
+        entry["volume_24h"] += _number((pair.get("volume") or {}).get("h24"))
+    return mints
+
+
 def read(mint: str, symbol: Any, fetch: Fetch | None = None, now: float | None = None) -> dict[str, Any]:
     """Never raises: a failed read is `unavailable`."""
     symbol = str(symbol or "").strip()
