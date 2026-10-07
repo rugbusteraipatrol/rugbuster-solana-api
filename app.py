@@ -871,6 +871,8 @@ def helius_hook():
     try:
         creators = sorted(push_alerts.creators_in(payload) & set(push_store.active_creators()))
         sent = push_alerts.check(push_store, creators) if creators else 0
+        if creators and not sent:
+            push_alerts.recheck_later(push_store, creators)
     except Exception:
         return jsonify({"ok": False}), 503
     return jsonify({"ok": True, "creators": len(creators), "sent": sent})

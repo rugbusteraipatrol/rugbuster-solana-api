@@ -115,11 +115,11 @@ def creator_share_pct(mint: str, creator: str, call: Callable[[str, Any], Any] |
             return None
         call = lambda method, params: rpc_post(url, method, params, RPC_TIMEOUT)  # noqa: E731
     try:
-        supply = call("getTokenSupply", [mint]) or {}
+        supply = call("getTokenSupply", [mint, {"commitment": "confirmed"}]) or {}
         total = float((supply.get("value") or {}).get("amount") or 0)
         if total <= 0:
             return None
-        accounts = call("getTokenAccountsByOwner", [creator, {"mint": mint}, {"encoding": "jsonParsed"}]) or {}
+        accounts = call("getTokenAccountsByOwner", [creator, {"mint": mint}, {"encoding": "jsonParsed", "commitment": "confirmed"}]) or {}
         held = 0.0
         for account in accounts.get("value") or []:
             info = (((account.get("account") or {}).get("data") or {}).get("parsed") or {}).get("info") or {}
@@ -135,7 +135,7 @@ def has_sold(start_share: float, now_share: float | None) -> bool:
 
 def alert_text(symbol: str | None, start_share: float) -> str:
     name = symbol or "a token you track"
-    return f"The creator of {name} just sold their {start_share:.1f}%."
+    return f"The creator of {name} just sold the {start_share:.1f}% they still held."
 
 
 # --- Firebase Cloud Messaging ---------------------------------------------
@@ -231,9 +231,20 @@ class Store:
                     INSERT INTO push_watches (device_token, mint, creator, symbol, start_share_pct, last_share_pct)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (device_token, mint) DO UPDATE
-                      SET active = TRUE, creator = EXCLUDED.creator, symbol = EXCLUDED.symbol,
-                          start_share_pct = EXCLUDED.start_share_pct, last_share_pct = EXCLUDED.last_share_pct,
-                          notified_at = NULL, updated_at = now()
+                      -- The app registers every tracked token again on each start. That
+                      -- must not undo an alert already sent for this creator (OMEN,
+                      -- 2026-10-07: alerted at once, then again 18 minutes later), and
+                      -- must not lower the share being watched after a partial sale.
+                      SET active = CASE WHEN push_watches.notified_at IS NOT NULL
+                                         AND push_watches.creator = EXCLUDED.creator
+                                        THEN push_watches.active ELSE TRUE END,
+                          notified_at = CASE WHEN push_watches.creator = EXCLUDED.creator
+                                             THEN push_watches.notified_at ELSE NULL END,
+                          start_share_pct = CASE WHEN push_watches.creator = EXCLUDED.creator
+                                                 THEN GREATEST(push_watches.start_share_pct, EXCLUDED.start_share_pct)
+                                                 ELSE EXCLUDED.start_share_pct END,
+                          creator = EXCLUDED.creator, symbol = EXCLUDED.symbol,
+                          last_share_pct = EXCLUDED.last_share_pct, updated_at = now()
                     """,
                     (device, mint, creator, symbol, share, share),
                 )
@@ -325,7 +336,20 @@ def check(store: Store, creators: list[str] | None = None,
             outcome = push(device, alert_text(symbol, device_start), mint)
             store.mark(device, mint, now_share, notified=outcome == "sent", gone=outcome == "gone")
             sent += outcome == "sent"
+            print(f"push: {outcome} {symbol or mint[:6]} at {time.strftime('%H:%M:%S', time.gmtime())} UTC", flush=True)
     return sent
+
+
+RECHECK_DELAYS = (20, 60)
+
+
+def recheck_later(store: Store, creators: list[str], delays: tuple[int, ...] = RECHECK_DELAYS) -> None:
+    """A webhook can arrive before the RPC node shows the new balance. Look
+    again a little later; an alert already sent is never sent twice."""
+    for delay in delays:
+        timer = threading.Timer(delay, lambda: check(store, creators))
+        timer.daemon = True
+        timer.start()
 
 
 def creators_in(payload: Any) -> set[str]:

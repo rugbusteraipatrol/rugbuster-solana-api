@@ -57,7 +57,7 @@ def test_a_sale_is_95_percent_of_the_tracked_share_gone():
 
 
 def test_the_alert_names_the_token_and_the_share():
-    assert push_alerts.alert_text("Seedthink", 6.706) == "The creator of Seedthink just sold their 6.7%."
+    assert push_alerts.alert_text("Seedthink", 6.706) == "The creator of Seedthink just sold the 6.7% they still held."
 
 
 def test_every_tracking_phone_is_told_once():
@@ -178,6 +178,7 @@ def test_helius_hook_needs_the_secret(monkeypatch, client):
     monkeypatch.setenv("HELIUS_WEBHOOK_SECRET", "s3cret")
     assert client.post("/hooks/helius", json=[]).status_code == 401
     monkeypatch.setattr(push_alerts, "check", lambda store, creators: len(creators))
+    monkeypatch.setattr(push_alerts, "recheck_later", lambda store, creators: None)
     body = client.post("/hooks/helius", json=[{"accountKeys": [CREATOR]}], headers={"Authorization": "s3cret"}).get_json()
     assert body == {"ok": True, "creators": 1, "sent": 1}
 
@@ -185,3 +186,35 @@ def test_helius_hook_needs_the_secret(monkeypatch, client):
 def test_helius_requests_name_the_client():
     """Helius answers 403 to Python-urllib's default user agent (2026-10-07)."""
     assert push_alerts.HEADERS["User-Agent"].startswith("RugBuster")
+
+
+def test_balances_are_read_at_confirmed_commitment():
+    """A webhook fires on a confirmed transaction; finalized balances lag it."""
+    seen = []
+
+    def call(method, params):
+        seen.append(params[-1])
+        if method == "getTokenSupply":
+            return {"value": {"amount": "100"}}
+        return {"value": []}
+
+    push_alerts.creator_share_pct(MINT, CREATOR, call=call)
+    assert all(p.get("commitment") == "confirmed" for p in seen)
+
+
+def test_re_registering_keeps_a_sent_alert_sent():
+    """OMEN, 2026-10-07: the app re-registered on start and the poll alerted again."""
+    sql = push_alerts.Store.add.__code__.co_consts
+    text = " ".join(c for c in sql if isinstance(c, str))
+    assert "notified_at = NULL" not in text
+    assert "push_watches.notified_at IS NOT NULL" in text
+    assert "GREATEST(push_watches.start_share_pct" in text
+
+
+def test_a_webhook_without_a_sale_is_checked_again(monkeypatch, client):
+    monkeypatch.setenv("HELIUS_WEBHOOK_SECRET", "s3cret")
+    later = []
+    monkeypatch.setattr(push_alerts, "check", lambda store, creators: 0)
+    monkeypatch.setattr(push_alerts, "recheck_later", lambda store, creators: later.append(creators))
+    client.post("/hooks/helius", json=[{"accountKeys": [CREATOR]}], headers={"Authorization": "s3cret"})
+    assert later == [[CREATOR]]
