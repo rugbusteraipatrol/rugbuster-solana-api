@@ -711,6 +711,48 @@
   const txLink = (label, sig) => (sig ? { label, href: `https://solscan.io/tx/${sig}` } : null);
   const acctLink = (label, addr) => (addr ? { label, href: `https://solscan.io/account/${addr}` } : null);
 
+  // Copies of the token's name, and who made them (read by the API in the background).
+  function makersText(m) {
+    if (!m || !m.status) return { text: "", linked: false, proof: null };
+    if (m.status === "checking" || m.status === "busy") return { text: "Checking who made these copies, about 30 seconds…", linked: false, proof: null };
+    if (m.status !== "ok" || !m.creators_read) return { text: "", linked: false, proof: null };
+    const c = (m.shared_creators || [])[0];
+    if (c) {
+      const more = (m.shared_creators || []).length - 1;
+      return { text: `${c.count} of ${m.checked} copies checked were launched by the same wallet (${short(c.wallet)})${c.includes_most_traded ? ", including the most traded one" : ""}.${more > 0 ? ` ${more} more wallet${more > 1 ? "s" : ""} made two or more.` : ""}`,
+        linked: true, proof: acctLink("maker", c.wallet) };
+    }
+    const f = (m.shared_funders || [])[0];
+    if (f) return { text: `The creators of ${f.count} of ${m.checked} copies checked were funded by the same wallet (${short(f.wallet)}).`, linked: true, proof: acctLink("funder", f.wallet) };
+    return { text: `${m.checked} copies checked: ${m.distinct_creators} different creators, no shared maker or funder${m.exchange_funded ? ` (${m.exchange_funded} funded from exchanges, which links nothing)` : ""}.`, linked: false, proof: null };
+  }
+  function copiesFact(d) {
+    const nc = d.name_copies || {}, n = nc.same_symbol_last_24h;
+    if (nc.status !== "ok" || typeof n !== "number" || n <= 0) return null;
+    const top = nc.most_traded, other = top && !top.is_this_token, mk = makersText(nc.makers);
+    const count = `${n}${nc.results_capped ? "+" : ""} other Solana token${n === 1 && !nc.results_capped ? "" : "s"}`;
+    return [n >= 5 || other || mk.linked ? "warn" : "muted", "Copies of this name",
+      `${count} named ${nc.symbol} launched in the last 24 h.${other ? ` The most traded one is ${short(top.mint)}; check you have the right address.` : top && top.is_this_token ? " This one trades the most of them." : ""}${mk.text ? " " + mk.text : ""}`,
+      [other ? { label: "most traded", href: `https://dexscreener.com/solana/${top.mint}` } : null, mk.proof]];
+  }
+  // While the API is still reading who made the copies, ask again every few seconds.
+  function followMakers(d, receipt) {
+    const nc = d.name_copies, st = nc?.makers?.status;
+    if (!nc?.symbol || (st !== "checking" && st !== "busy")) return;
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      try {
+        const m = await fetch(`${API}/copies?symbol=${encodeURIComponent(nc.symbol)}`).then((r) => r.json());
+        if (m?.status && m.status !== "checking" && m.status !== "busy") {
+          clearInterval(timer);
+          if ($("verdict").dataset.address === d.address) { nc.makers = m; renderVerdict(d, receipt); }
+        }
+      } catch {}
+      if (tries >= 20) clearInterval(timer);
+    }, 4000);
+  }
+
   function facts(d) {
     const out = [], cp = d.creator_position || {}, ls = d.launch_snipe || {}, dh = d.deployer_history || {};
     const share = typeof cp.share_at_creation_pct === "number" ? cp.share_at_creation_pct : cp.peak_share_pct;
@@ -733,6 +775,8 @@
         k.metadata_mutable ? "name and image can change" : "name and image fixed"];
       out.push([tone(kr.color), "Contract", `${bits.join(" · ")}. ${k.token_program}.`]);
     }
+    const copies = copiesFact(d);
+    if (copies) out.push(copies);
     if (cc.holders?.status === "ok") {
       const h = cc.holders, hr = holdersReading(h);
       out.push([tone(hr.color), "Holders", h.program_held_pct >= 99 && h.top10_wallet_pct < 1
@@ -753,6 +797,7 @@
     const color = { DANGER: COLORS.danger, WARN: COLORS.warn, GOOD: COLORS.good }[d.label] || COLORS.muted;
     const name = [d.token_name, d.token_symbol && d.token_symbol !== d.token_name ? `(${d.token_symbol})` : ""].filter(Boolean).join(" ");
     const nc = (d.not_established || []);
+    $("verdict").dataset.address = d.address || "";
     $("verdict").innerHTML = `
       <div class="v-head fade-in">${gaugeSvg(d.risk_score, color)}
         <div style="min-width:0"><div class="v-label" style="color:${color}">${esc(d.label || "UNKNOWN")}${d.token_symbol ? `<span class="v-sym">${esc(d.token_symbol)}</span>` : ""}</div>
@@ -931,6 +976,7 @@
       $("hud").classList.remove("scanning"); $("hudState").textContent = (data.label || "done").toLowerCase(); stopClock(); window.trace3d?.setScanning(false);
       resultGraph(data);
       renderVerdict(data, receipt);
+      followMakers(data, receipt);
     } catch (e) {
       await theatre;
       $("hud").classList.remove("scanning"); $("hudState").textContent = "error"; stopClock(); setProgress(0); window.trace3d?.setScanning(false);
