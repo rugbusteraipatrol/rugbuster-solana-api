@@ -180,3 +180,8 @@ def test_helius_hook_needs_the_secret(monkeypatch, client):
     monkeypatch.setattr(push_alerts, "check", lambda store, creators: len(creators))
     body = client.post("/hooks/helius", json=[{"accountKeys": [CREATOR]}], headers={"Authorization": "s3cret"}).get_json()
     assert body == {"ok": True, "creators": 1, "sent": 1}
+
+
+def test_helius_requests_name_the_client():
+    """Helius answers 403 to Python-urllib's default user agent (2026-10-07)."""
+    assert push_alerts.HEADERS["User-Agent"].startswith("RugBuster")

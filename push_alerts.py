@@ -40,6 +40,8 @@ MAX_WATCHES_PER_DEVICE = 100
 RPC_TIMEOUT = 6
 
 HELIUS_API = "https://api.helius.xyz/v0/webhooks"
+# Helius answers 403 to the default Python-urllib user agent.
+HEADERS = {"User-Agent": "RugBuster/1.0", "Content-Type": "application/json"}
 FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
 
 _state_lock = threading.Lock()
@@ -162,7 +164,8 @@ def fcm_access_token(account: dict[str, Any]) -> str:
     body = urllib.parse.urlencode({
         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion,
     }).encode()
-    with urllib.request.urlopen(urllib.request.Request(account["token_uri"], data=body), timeout=10) as response:
+    token_request = urllib.request.Request(account["token_uri"], data=body, headers={"User-Agent": HEADERS["User-Agent"]})
+    with urllib.request.urlopen(token_request, timeout=10) as response:
         token = json.load(response)
     with _state_lock:
         _access_token.update(token=token["access_token"], expires=now + float(token.get("expires_in", 3600)))
@@ -186,7 +189,7 @@ def send_push(device_token: str, body: str, mint: str) -> str:
     try:
         request = urllib.request.Request(
             url, data=json.dumps(message).encode(),
-            headers={"Authorization": f"Bearer {fcm_access_token(account)}", "Content-Type": "application/json"},
+            headers={**HEADERS, "Authorization": f"Bearer {fcm_access_token(account)}"},
         )
         with urllib.request.urlopen(request, timeout=10):
             return "sent"
@@ -353,7 +356,8 @@ def sync_webhook(store: Store) -> str:
     if not (key and target and secret):
         return "not_configured"
     addresses = sorted(store.active_creators())
-    with urllib.request.urlopen(f"{HELIUS_API}?api-key={key}", timeout=10) as response:
+    listing = urllib.request.Request(f"{HELIUS_API}?api-key={key}", headers=HEADERS)
+    with urllib.request.urlopen(listing, timeout=10) as response:
         hooks = json.load(response) or []
     ours = next((hook for hook in hooks if hook.get("webhookURL") == target), None)
     if not addresses and not ours:
@@ -365,8 +369,7 @@ def sync_webhook(store: Store) -> str:
     if ours and sorted(ours.get("accountAddresses") or []) == addresses:
         return "unchanged"
     method, url = ("PUT", f"{HELIUS_API}/{ours['webhookID']}?api-key={key}") if ours else ("POST", f"{HELIUS_API}?api-key={key}")
-    request = urllib.request.Request(url, data=json.dumps(body).encode(), method=method,
-                                     headers={"Content-Type": "application/json"})
+    request = urllib.request.Request(url, data=json.dumps(body).encode(), method=method, headers=HEADERS)
     with urllib.request.urlopen(request, timeout=10):
         return "updated" if ours else "created"
 
