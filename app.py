@@ -26,11 +26,13 @@ from freshness import (
     withhold_verdict,
 )
 import chain_checks
+import name_copies
 import creator_position as creator_position_module
 import x402_solana
 import launch_snipe as launch_snipe_module
 import perks as perks_module
 from scoring import (
+    KNOWN_SOLANA_MINTS,
     SCORING_VERSION,
     apply_deployer_history,
     deployer_history_from_record,
@@ -262,6 +264,23 @@ def attach_chain_checks(payload: dict[str, Any]) -> None:
         payload["chain_checks"] = checks
 
 
+def attach_name_copies(payload: dict[str, Any]) -> None:
+    """Other tokens under the same ticker in the last day (informational)."""
+    if "label" not in payload or "name_copies" in payload:
+        return
+    address = payload.get("address")
+    if not isinstance(address, str) or not is_valid_solana_mint(address):
+        return
+    # A curated asset is the one its ticker names; its copies are someone
+    # else's problem to explain, not a fact about it.
+    if address in KNOWN_SOLANA_MINTS:
+        return
+    try:
+        payload["name_copies"] = name_copies.read(address, payload.get("token_symbol"))
+    except Exception:  # noqa: BLE001 -- informational; never fail the answer
+        pass
+
+
 def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None) -> dict[str, Any]:
     """Attach build provenance, and the evidence split, to any response.
 
@@ -277,6 +296,7 @@ def with_identity(payload: dict[str, Any], report: dict[str, Any] | None = None)
     enriched = dict(payload)
     enriched.update(build_identity(SCORING_VERSION))
     attach_chain_checks(enriched)
+    attach_name_copies(enriched)
     if "label" in enriched:
         enriched["evidence"] = build_evidence(enriched, report)
         # A reader who stops at the top of the response should still be told
@@ -836,6 +856,7 @@ def score():
             }
         )
         attach_chain_checks(result)
+        attach_name_copies(result)
         result["evidence"] = build_evidence(result, report)
         result.update(describe(result))
         return jsonify(result)
