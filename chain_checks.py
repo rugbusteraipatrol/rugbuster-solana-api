@@ -144,6 +144,18 @@ def read_contract(call: Call, mint: str) -> dict[str, Any]:
 # --- holders ----------------------------------------------------------------
 
 
+def _is_program_address(address: str | None) -> bool:
+    """True for an address off the ed25519 curve: a PDA no key can sign for."""
+    if not address:
+        return False
+    try:
+        from solders.pubkey import Pubkey
+
+        return not Pubkey.from_string(address).is_on_curve()
+    except Exception:  # noqa: BLE001 -- unreadable address: keep calling it a wallet
+        return False
+
+
 def read_holders(call: Call, mint: str, supply: Any = None) -> dict[str, Any]:
     if supply is None:
         supply = ((call("getTokenSupply", [mint]) or {}).get("value") or {}).get("amount")
@@ -171,7 +183,11 @@ def read_holders(call: Call, mint: str, supply: Any = None) -> dict[str, Any]:
     rows = []
     for account, owner in zip(largest, owners):
         program = owner_programs.get(owner) if owner else None
-        kind = "wallet" if program in (SYSTEM_PROGRAM, None) else "program"
+        # A pool's vault authority (Raydium CPMM and AMM v4, LaunchLab) is a
+        # program address with no data, so the system program owns it; it has
+        # no private key, so only the pool program can move those tokens.
+        is_wallet = program in (SYSTEM_PROGRAM, None) and not _is_program_address(owner)
+        kind = "wallet" if is_wallet else "program"
         rows.append({"owner": owner, "pct": _pct(account.get("amount"), supply), "kind": kind})
 
     wallets = [r for r in rows if r["kind"] == "wallet" and r["pct"]]

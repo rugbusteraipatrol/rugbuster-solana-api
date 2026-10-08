@@ -88,6 +88,33 @@ def test_program_accounts_are_counted_apart_from_wallets():
     assert [r["owner"] for r in h["top_wallets"]] == ["Alice", "Bob"]
 
 
+def test_a_raydium_pool_is_not_counted_as_a_wallet():
+    """The Altruists, 2026-10-08: Raydium CPMM's vault authority read as a 21% wallet.
+
+    That authority is a program address the system program owns, so the owner
+    lookup alone called it a wallet.
+    """
+    pool = "GpMZbSM2GgvTKHJirzeGfMFoaZ8UR2X7F4v8vHTvxFbL"  # Raydium CPMM vault authority (PDA)
+    person = "43DphVXCLUDvbQC6DHCDjaqpacEcyu1u4Cqu6rHWvTYD"
+    token_accounts = {"value": [
+        {"data": {"parsed": {"info": {"owner": pool}}}},
+        {"data": {"parsed": {"info": {"owner": person}}}},
+    ]}
+    owner_programs = {"value": [{"owner": SYSTEM}, {"owner": SYSTEM}]}
+    call = fake(
+        {
+            ("getTokenSupply", MINT): {"value": {"amount": "1000"}},
+            ("getTokenLargestAccounts", MINT): {"value": [
+                {"address": "Vault", "amount": "212"}, {"address": "W1", "amount": "30"}]},
+        },
+        sequences={"getMultipleAccounts": [token_accounts, owner_programs]},
+    )
+    h = chain_checks.read_holders(call, MINT)
+    assert h["program_held_pct"] == 21.2
+    assert h["largest_wallet_pct"] == 3.0
+    assert [r["owner"] for r in h["top_wallets"]] == [person]
+
+
 def test_huge_tokens_report_why_holders_are_unread():
     call = fake({
         ("getTokenSupply", MINT): {"value": {"amount": "1"}},
