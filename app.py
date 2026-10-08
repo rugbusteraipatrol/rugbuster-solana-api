@@ -31,6 +31,7 @@ import copy_makers
 import creator_position as creator_position_module
 import x402_solana
 import launch_snipe as launch_snipe_module
+import launch_origin
 import perks as perks_module
 import push_alerts
 from scoring import (
@@ -401,6 +402,7 @@ def refresh_stale_record(
     if report is None:
         return None
 
+    launch_origin.fill_creator(report)
     position = creator_position_module.from_report(report)
     snipe = launch_snipe_module.from_report(report)
     live = score_live_rugcheck_report(report, history=history, position=position, snipe=snipe)
@@ -938,6 +940,7 @@ def score():
         if report is None:
             return jsonify(cache_miss_response(address, "live_scan_unavailable"))
 
+        launch_origin.fill_creator(report)
         position = creator_position_module.from_report(report)
         snipe = launch_snipe_module.from_report(report)
         result = score_live_rugcheck_report(report, position=position, snipe=snipe)

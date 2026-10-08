@@ -146,7 +146,7 @@ def lookup(
         for signature in picked:
             tx = call(
                 "getTransaction",
-                [signature["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}],
+                [signature["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}],
             )
             balance = _creator_balance(tx or {}, creator, mint)
             if balance is not None:

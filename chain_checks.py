@@ -222,7 +222,7 @@ def read_funding(call: Call, creator: str | None, created_at: Any = None) -> dic
             "note": "The creator wallet has 1,000+ transactions; its first funding is out of reach here.",
         }
     first = signatures[-1]
-    tx = call("getTransaction", [first["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]) or {}
+    tx = call("getTransaction", [first["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}]) or {}
     funded_at = tx.get("blockTime") or first.get("blockTime")
     funder, lamports, method = None, 0, None
 

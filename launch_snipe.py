@@ -111,7 +111,7 @@ def read(
                 break
             tx = call(
                 "getTransaction",
-                [signature["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}],
+                [signature["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}],
             )
             pre, post = _balances(tx or {}, mint)
             for owner, balance in post.items():
