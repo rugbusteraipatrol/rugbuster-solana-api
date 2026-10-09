@@ -53,6 +53,24 @@ BASE_RATE = {
 MATERIAL_SHARE_PCT = 5.0
 MINOR_SHARE_PCT = 1.0
 
+# A creator who mints the whole supply to themselves and then opens a pool with
+# it has not sold anything: the tokens went into liquidity they control. Read as
+# a sale, that made Cetus (minted 100%, Orca pool 6 s later) and ELBARTO (Meteora
+# pool 10 s later) DANGER with "bought 100% at creation, sold it" (2026-10-09).
+# The drop is a deposit when the transaction runs one of these AMM programs with
+# a pool or liquidity instruction and no swap.
+AMM_PROGRAMS = frozenset({
+    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",   # Orca Whirlpools
+    "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",   # Meteora DAMM v2
+    "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB",  # Meteora DAMM v1
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",   # Meteora DLMM
+    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",  # Raydium AMM v4
+    "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",  # Raydium CPMM
+    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",  # Raydium CLMM
+})
+LIQUIDITY_WORDS = ("initializepool", "initializecustomizablepool", "initializelbpair", "initialize2",
+                   "openposition", "increaseliquidity", "addliquidity", "deposit")
+
 
 def rpc_url() -> str | None:
     value = os.getenv("SOLANA_RPC_URL", "").strip()
@@ -83,6 +101,21 @@ def _creator_balance(tx: dict[str, Any], creator: str, mint: str) -> float | Non
         if entry.get("owner") == creator and entry.get("mint") == mint:
             return 0.0
     return None
+
+
+def is_liquidity_deposit(tx: dict[str, Any]) -> bool:
+    """True when this transaction put tokens into an AMM pool rather than
+    selling them: an AMM program runs a pool or liquidity instruction and
+    nothing in it is a swap."""
+    meta = tx.get("meta") if isinstance(tx, dict) else None
+    logs = [str(line) for line in ((meta or {}).get("logMessages") or [])]
+    invoked = {line.split()[1] for line in logs if line.startswith("Program ") and " invoke [" in line}
+    if not invoked & AMM_PROGRAMS:
+        return False
+    lowered = [line.lower() for line in logs]
+    if any("instruction: swap" in line or "swapbase" in line for line in lowered):
+        return False
+    return any(word in line for line in lowered for word in LIQUIDITY_WORDS)
 
 
 def unavailable(reason: str, creator: str | None = None) -> dict[str, Any]:
@@ -143,11 +176,13 @@ def lookup(
         # signature lets a reader open the transaction behind each finding.
         points: list[tuple[int | None, float, int, str]] = []
         index_of = {s["signature"]: i for i, s in enumerate(ordered)}
+        transactions: dict[str, dict[str, Any]] = {}
         for signature in picked:
             tx = call(
                 "getTransaction",
                 [signature["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}],
             )
+            transactions[signature["signature"]] = tx or {}
             balance = _creator_balance(tx or {}, creator, mint)
             if balance is not None:
                 points.append((signature.get("blockTime"), balance, index_of[signature["signature"]], signature["signature"]))
@@ -167,7 +202,7 @@ def lookup(
         # dust transfer or an account close days later. If unread transactions
         # sit between that reading and the one before it, the exit happened
         # somewhere in that gap and the time is an upper bound.
-        sold_after, sold_after_is_upper_bound, exit_signature = None, False, None
+        sold_after, sold_after_is_upper_bound, exit_signature, drop_signature = None, False, None, None
         if status == "sold" and first_time:
             peak_at = max(range(len(points)), key=lambda i: points[i][1])
             for i in range(peak_at + 1, len(points)):
@@ -177,7 +212,27 @@ def lookup(
                     sold_after_is_upper_bound = idx - points[i - 1][2] > 1
                     # only when this reading is the exit itself, not a later one
                     exit_signature = None if sold_after_is_upper_bound else sig
+                    drop_signature = sig
                     break
+        if status == "sold" and drop_signature and is_liquidity_deposit(transactions.get(drop_signature, {})):
+            return {
+                "status": "pooled",
+                "creator": creator,
+                "token_program": program_used,
+                "share_at_creation_pct": round(100.0 * first_balance / supply, 3),
+                "peak_share_pct": round(100.0 * peak / supply, 3),
+                "current_share_pct": round(100.0 * last_balance / supply, 3),
+                "pooled_after_seconds": sold_after,
+                "pool_signature": drop_signature,
+                "first_seen_at": first_time,
+                "transactions_on_record": len(ordered),
+                "observed_at": observed_at,
+                "source": "solana_rpc",
+                "note": (
+                    "The creator put the supply into a liquidity pool themselves. That is not "
+                    "a sale; unless that liquidity is locked or burned, they can take it back."
+                ),
+            }
         return {
             "status": status,
             "creator": creator,

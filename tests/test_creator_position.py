@@ -295,3 +295,76 @@ def test_an_exit_hidden_between_unread_transactions_is_an_upper_bound():
                "creator_position": got}
     payload["evidence"] = build_evidence(payload)
     assert "sold 100% of it within 8 hours." in describe(payload)["verdict_summary"]
+
+
+# --- a creator who seeds the pool has not sold ---------------------------------
+# Cetus (2026-10-09): the creator minted the whole supply to themselves and 6 s
+# later opened an Orca pool with it. Read as a sale it was DANGER, "bought 100%
+# at creation, sold it after 6 s". The tokens went into liquidity, not to buyers.
+
+ORCA = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+PUMP = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+
+
+def logs_rpc(steps):
+    """steps: signature -> (blockTime, creator balance, log lines)."""
+    ata = cp.associated_token_account(CREATOR, MINT, dict(cp.TOKEN_PROGRAMS)["token2022"])
+
+    def call(method, params):
+        if method == "getSignaturesForAddress":
+            if params[0] != ata:
+                return []
+            return [{"signature": sig, "slot": i, "blockTime": t} for i, (sig, (t, _, _)) in enumerate(steps.items())]
+        t, balance, logs = steps[params[0]]
+        return {"meta": {"logMessages": logs, "postTokenBalances": [
+            {"owner": CREATOR, "mint": MINT, "uiTokenAmount": {"uiAmount": balance}}]}}
+    return call
+
+
+POOL_LOGS = [f"Program {ORCA} invoke [1]", "Program log: Instruction: InitializePoolV2",
+             f"Program {ORCA} invoke [1]", "Program log: Instruction: OpenPositionWithTokenExtensions",
+             f"Program {ORCA} invoke [1]", "Program log: Instruction: IncreaseLiquidityV2"]
+SWAP_LOGS = [f"Program {ORCA} invoke [1]", "Program log: Instruction: SwapV2"]
+
+
+def test_a_pool_deposit_is_pooled_not_sold():
+    got = cp.lookup(CREATOR, MINT, SUPPLY, logs_rpc({
+        "mint": (1000, SUPPLY, ["Program log: Instruction: MintTo"]),
+        "pool": (1006, 0.0, POOL_LOGS),
+    }))
+    assert got["status"] == "pooled"
+    assert got["pool_signature"] == "pool" and got["pooled_after_seconds"] == 6
+    assert "not a sale" in got["note"]
+
+
+def test_selling_into_a_pool_is_still_a_sale():
+    got = cp.lookup(CREATOR, MINT, SUPPLY, logs_rpc({
+        "buy": (1000, 120_000_000.0, [f"Program {PUMP} invoke [1]", "Program log: Instruction: Buy"]),
+        "sell": (1022, 0.0, SWAP_LOGS),
+    }))
+    assert got["status"] == "sold"
+
+
+def test_a_launchpad_sale_is_not_read_as_a_deposit():
+    pump_sell = [f"Program {PUMP} invoke [1]", "Program log: Instruction: Sell"]
+    assert cp.is_liquidity_deposit({"meta": {"logMessages": pump_sell}}) is False
+    assert cp.is_liquidity_deposit({"meta": {"logMessages": POOL_LOGS}}) is True
+    assert cp.is_liquidity_deposit({}) is False
+
+
+def test_a_seeded_pool_is_a_warn_floor_not_danger():
+    pooled = {"status": "pooled", "creator": CREATOR, "share_at_creation_pct": 100.0, "peak_share_pct": 100.0}
+    risk, flags = apply_creator_position(20, [], pooled)
+    assert risk == 50 and label_for_risk(risk) == "WARN"
+    assert flags == ["creator_seeded_own_pool"]
+    assert "creator_sold_launch_allocation" not in flags and "creator_bought_at_creation" not in flags
+
+
+def test_the_headline_says_pooled_not_sold():
+    pooled = {"status": "pooled", "creator": CREATOR, "share_at_creation_pct": 100.0, "peak_share_pct": 100.0,
+              "observed_at": "2026-10-09T15:00:00+00:00", "source": "solana_rpc"}
+    payload = {"label": "WARN", "risk_flags": ["creator_seeded_own_pool"], "creator_position": pooled}
+    payload["evidence"] = build_evidence(payload)
+    summary = describe(payload)["verdict_summary"]
+    assert "put it into a liquidity pool" in summary and "not a sale" in summary
+    assert "bought" not in summary and "sold" not in summary

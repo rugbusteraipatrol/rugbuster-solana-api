@@ -98,7 +98,7 @@ FINDING, REFUSAL, GAP = "FINDING", "REFUSAL", "GAP"
 
 
 HISTORY_FLAGS = {"creator_history_of_rugged_tokens", "creator_rug_rate_high", "creator_rug_rate_elevated"}
-POSITION_FLAGS = {"creator_holds_launch_allocation", "creator_sold_launch_allocation"}
+POSITION_FLAGS = {"creator_holds_launch_allocation", "creator_sold_launch_allocation", "creator_seeded_own_pool"}
 
 
 def _snipe_sentence(snipe: dict[str, Any]) -> str:
@@ -143,6 +143,12 @@ def _position_sentence(position: dict[str, Any]) -> str:
         f" In our data, {round(100 * hour)} of every 100 creators who held a position like this sold it within the first hour."
         if isinstance(hour, (int, float)) else ""
     )
+    if position.get("status") == "pooled":
+        return (
+            f"The creator minted {share_text} of the supply to themselves and put it into a "
+            "liquidity pool. That is not a sale. Unless that liquidity is locked or burned, "
+            "they can take it back out."
+        )
     if position.get("status") == "sold":
         sold = position.get("sold_pct_of_peak")
         sold_text = f"{sold:.0f}%" if isinstance(sold, (int, float)) else "nearly all"

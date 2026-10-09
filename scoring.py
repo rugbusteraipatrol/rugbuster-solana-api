@@ -159,6 +159,9 @@ CREATOR_POSITION_MATERIAL_SHARE_PCT = 5.0
 CREATOR_POSITION_MINOR_SHARE_PCT = 1.0
 CREATOR_POSITION_MATERIAL_RISK = 75
 CREATOR_POSITION_MINOR_RISK = 60
+# The creator seeded the pool with their own supply (see creator_position.py).
+# Not a sale, but liquidity they can pull while it is not locked: WARN, not DANGER.
+CREATOR_SEEDED_POOL_RISK = 50
 
 # A launch taken by three or more wallets within 5 seconds of creation (see
 # launch_snipe.py). A disclosure about the first seconds, not proof of harm:
@@ -247,6 +250,11 @@ def apply_creator_position(
     share = _number(position.get("peak_share_pct"))
     if share is None:
         share = _number(position.get("share_at_creation_pct"))
+    if status == "pooled":
+        if share is not None and share >= CREATOR_POSITION_MINOR_SHARE_PCT:
+            flags.append("creator_seeded_own_pool")
+            risk = max(risk, CREATOR_SEEDED_POOL_RISK)
+        return _clamp(risk), flags
     if status not in {"holding", "sold"} or share is None or share < CREATOR_POSITION_MINOR_SHARE_PCT:
         if status in {"holding", "sold"} and share is not None:
             flags.append("creator_launch_allocation_negligible")
@@ -520,7 +528,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.10.06"
+SCORING_VERSION = "2026.10.09"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all

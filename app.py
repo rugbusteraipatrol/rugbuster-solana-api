@@ -721,6 +721,8 @@ def feed_reason(position: Any, snipe: Any) -> str | None:
         return f"{snipe.get('buyers_within_window')} wallets bought in the first {snipe.get('window_seconds')}s."
     if position.get("status") == "holding" and isinstance(share, (int, float)) and share >= 1:
         return f"Creator still holds {share:.1f}% bought at creation."
+    if position.get("status") == "pooled":
+        return "Creator put the supply into a pool themselves; they can take it back."
     return None
 
 
