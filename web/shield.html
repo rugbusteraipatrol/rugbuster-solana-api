@@ -190,7 +190,7 @@
   .t3d-core .t3d-hex > * { width: 100%; height: 100%; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: #0b0a14; }
   .t3d-core img { object-fit: cover; display: none; }
   .t3d-core.has-img img { display: block; }
-  .t3d-core span { display: grid; place-items: center; font: 800 14px var(--display); color: var(--text); letter-spacing: .06em; }
+  .t3d-core span { display: grid; place-items: center; font: 800 min(14px, calc(var(--s) * 1.05 / var(--len, 6))) var(--display); color: var(--text); letter-spacing: .06em; }
   .t3d-core.has-img span { display: none; }
   .hud-over { position: absolute; inset: 0; pointer-events: none; display: none; font: 600 10px var(--mono); letter-spacing: .2em; color: #5b5675; }
   .hud.three .hud-over { display: block; }
@@ -672,9 +672,12 @@
     const token = ++imageToken; coreImageReady = false; coreImageMint = mint;
     try {
       const meta = await fetch(`${API}/token-meta?address=${mint}`).then((r) => r.json());
-      for (const src of meta.image_candidates || []) {
+      // public IPFS gateways often time out, so our own copy of the image goes first;
+      // the particle portrait reads that same copy, so it is downloaded once
+      const own = meta.image ? `${API || location.origin}/token-image?address=${mint}` : null;
+      for (const src of [own, ...(meta.image_candidates || [])].filter(Boolean)) {
         if (token !== imageToken) return;
-        if (await tryImage(src)) {
+        if (await tryImage(src, src === own ? 12000 : 7000)) {
           if (token !== imageToken) return;
           $("coreImg").setAttribute("href", src);
           coreImageReady = true;

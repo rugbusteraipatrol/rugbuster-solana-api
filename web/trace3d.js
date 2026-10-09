@@ -178,7 +178,7 @@ export function createTrace(container) {
   function result(m) {
     model = m;
     core.style.setProperty("--c", m.verdictColor);
-    core.querySelector("span").textContent = m.symbol || "TOKEN";
+    setSymbol(m.symbol || "TOKEN");
     core.classList.add("on");
     if (mode !== "scanning") startReveal();
   }
@@ -281,7 +281,12 @@ export function createTrace(container) {
     if (pixelSrc) probe.onerror = () => { if (token === portraitToken && probe.src !== url.href) probe.src = url.href; };
     probe.src = pixelSrc || url.href;
   }
-  function setSymbol(text) { core.querySelector("span").textContent = text || "MINT"; }
+  // the hexagon cuts its sides, so a long symbol gets a smaller font instead of losing letters
+  function setSymbol(text) {
+    const span = core.querySelector("span");
+    span.textContent = text || "MINT";
+    span.style.setProperty("--len", Math.max(4, span.textContent.length));
+  }
 
   layer.addEventListener("click", () => { if (model && mode !== "scanning") startReveal(); });
 
