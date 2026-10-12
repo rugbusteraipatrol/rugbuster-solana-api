@@ -2,6 +2,8 @@
 past WARN on its own, listed as a gap when unread."""
 from __future__ import annotations
 
+import time
+
 import pytest
 
 import app as api
@@ -18,7 +20,7 @@ SUPPLY = 1_000_000_000.0
 
 def snipe(status="sniped", n=4, bots=3, checked=4):
     return {"status": status, "buyers_within_window": n, "window_seconds": 5,
-            "bot_wallets_among_checked": bots, "wallets_checked": checked, "creation_time": 1000,
+            "bot_wallets_among_checked": bots, "wallets_checked": checked, "creation_time": time.time() - 3600,
             "observed_at": "2026-09-22T10:00:00+00:00", "source": "solana_rpc", "study": ls.STUDY}
 
 
@@ -178,3 +180,80 @@ def test_a_cached_live_row_carries_its_stored_launch_read():
     body = api.live_cache_result(row, MINT)
     assert body["launch_snipe"]["status"] == "sniped"
     assert body["evidence"]["launch"]["status"] == OK
+
+
+# --- busy tokens and early wallets that sold (2026-10-12, Altai / MissRose) -----
+
+def busy_rpc(txs, held_now, asc=True):
+    """A mint with 1,000+ signatures: only the oldest-first page reaches the launch."""
+    def call(method, params):
+        if method == "getSignaturesForAddress":
+            if params[0] == MINT:
+                return [{"signature": "n%d" % i, "slot": 10**6 + i, "blockTime": 10**6 + i} for i in range(1000)]
+            return [{"signature": "w"}] * 5
+        if method == "getTransactionsForAddress":
+            if not asc:
+                raise RuntimeError("method not found")
+            return {"data": [{"signature": "s%d" % i, "slot": i, "blockTime": t, "err": None} for i, (t, _) in enumerate(txs)]}
+        if method == "getTransaction":
+            i = int(params[0][1:]); _, post = txs[i]
+            return {"meta": {"preTokenBalances": [], "postTokenBalances": [
+                {"owner": o, "mint": MINT, "uiTokenAmount": {"uiAmount": b}} for o, b in post.items()]}}
+        if method == "getTokenAccountsByOwner":
+            amount = held_now.get(params[0], 0.0)
+            return {"value": [{"account": {"data": {"parsed": {"info": {"tokenAmount": {"uiAmount": amount}}}}}}]}
+        raise AssertionError(method)
+    return call
+
+
+ALTAI = [(1000, {POOL: 9.0e8, "w1": 8.29e7, "w2": 3.26e7, "w3": 3.33e7, "w4": 3.11e7}), (1300, {"late": 1e6})]
+
+
+def test_a_busy_token_is_read_oldest_first_and_the_sell_out_is_measured():
+    got = ls.read(MINT, CREATOR, SUPPLY, busy_rpc(ALTAI, {}))
+    assert got["status"] == "sniped"
+    assert got["buyers_within_window"] == 4
+    assert got["early_bought_pct"] == pytest.approx(17.99, abs=0.01)
+    assert got["early_held_now_pct"] == 0.0
+
+
+def test_without_an_oldest_first_method_a_busy_token_stays_unavailable():
+    got = ls.read(MINT, CREATOR, SUPPLY, busy_rpc(ALTAI, {}, asc=False))
+    assert got["status"] == "unavailable"
+
+
+def test_early_wallets_that_sold_out_score_danger_even_without_a_creator_finding():
+    s = dict(snipe(), early_bought_pct=18.0, early_held_now_pct=0.0, early_wallets_balance_checked=4)
+    risk, flags = apply_launch_snipe(1, [], s)
+    assert risk == 75
+    assert flags == ["launch_sniped_by_bots", "launch_wallets_sold_out"]
+    report = {"mint": MINT, "creator": CREATOR, "score_normalised": 1,
+              "token": {"supply": int(SUPPLY * 10**6), "decimals": 6, "mintAuthority": None, "freezeAuthority": None},
+              "tokenMeta": {"name": "x", "symbol": "X", "mutable": False},
+              "risks": [], "totalHolders": 4000, "totalMarketLiquidity": 28000}
+    out = score_live_rugcheck_report(report, snipe=s)
+    assert out["label"] == "DANGER"
+    payload = {"label": "DANGER", "risk_flags": out["risk_flags"], "launch_snipe": s}
+    payload["evidence"] = build_evidence(payload)
+    assert "4 wallets bought 18.0% of the supply within 5 seconds" in describe(payload)["verdict_summary"]
+
+
+@pytest.mark.parametrize("bought,held", [(8.0, 0.0), (18.0, 5.0), (None, None)])
+def test_a_small_or_still_held_early_share_is_not_a_sell_out(bought, held):
+    s = dict(snipe(status="clean"), early_bought_pct=bought, early_held_now_pct=held)
+    assert apply_launch_snipe(1, [], s) == (1, [])
+
+
+def test_a_failed_balance_read_keeps_the_launch_read():
+    def call(method, params):
+        if method == "getTokenAccountsByOwner":
+            raise TimeoutError("slow")
+        return busy_rpc(ALTAI, {})(method, params)
+    got = ls.read(MINT, CREATOR, SUPPLY, call)
+    assert got["status"] == "sniped"
+    assert "early_bought_pct" not in got
+
+
+def test_a_launch_older_than_a_week_is_reported_and_not_scored():
+    old = dict(snipe(), creation_time=time.time() - 30 * 86400, early_bought_pct=23.2, early_held_now_pct=0.0)
+    assert apply_launch_snipe(1, [], old) == (1, [])

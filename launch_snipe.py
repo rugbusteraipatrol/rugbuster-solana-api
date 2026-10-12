@@ -13,9 +13,21 @@ few), the distinct wallets that first hold the token within the window, and
 for each of those a signature count to tell a high-frequency bot wallet from
 an ordinary one. Between 2 and about 14 RPC calls.
 
-Limit: `getSignaturesForAddress` returns the newest 1,000 signatures. A token
-with more history than that cannot have its launch read this way, and the
-result says so (`unavailable`) rather than guessing.
+Busy tokens. `getSignaturesForAddress` returns the newest 1,000 signatures,
+so a token with more history than that used to come back `unavailable` -- and
+those are exactly the tokens people look at. Measured 2026-10-12: Altai
+(Gyk9...pump, 4,471 holders) and MissRose (7b6d...x28H) both scored GOOD 1.
+Read oldest first, four wallets took 18.0% and 12.6% of the supply in the
+creation second and both groups have sold all of it; one of Altai's four is the
+wallet pump.fun shows as its creator. For such tokens the earliest page now
+comes from Helius's `getTransactionsForAddress` (oldest first). An RPC without
+that method still answers `unavailable`.
+
+Did they sell. For each early wallet (up to MAX_HOLDINGS_CHECKED) one
+`getTokenAccountsByOwner` reads what it holds now. The sum against what the
+same wallets bought is `early_bought_pct` / `early_held_now_pct`; scoring.py
+decides what that means. If the read fails the two fields are absent and the
+rest of the result stands.
 """
 from __future__ import annotations
 
@@ -32,7 +44,9 @@ RPC_TIMEOUT_SECONDS = 4
 WINDOW_SECONDS = 5            # "the first seconds": same window as the study
 MIN_BUYERS_FOR_SNIPED = 3     # same threshold as the study (163 of 300)
 BUSY_WALLET_SIGNATURES = 900  # a page of 1,000 minus failed ones: a bot, not a person
-MAX_EARLY_TRANSACTIONS = 8    # how far into the launch we read
+MAX_EARLY_TRANSACTIONS = 12   # how far into the launch we read
+MAX_HOLDINGS_CHECKED = 8      # how many early buyers get a balance read
+EARLIEST_PAGE = 40            # oldest-first page size for busy tokens
 MAX_WALLETS_CHECKED = 5       # how many early buyers get a signature count
 POOL_SHARE_OF_SUPPLY = 0.5    # an account holding this much is the curve/pool, not a buyer
 
@@ -96,7 +110,9 @@ def read(
     try:
         signatures = call("getSignaturesForAddress", [mint, {"limit": 1000}]) or []
         if len(signatures) >= 1000:
-            return unavailable("token has more than 1,000 transactions; its launch is beyond the readable window")
+            signatures = _earliest_page(mint, call)
+            if signatures is None:
+                return unavailable("token has more than 1,000 transactions; its launch is beyond the readable window")
         ordered = sorted((s for s in signatures if not s.get("err")), key=lambda s: s.get("slot", 0))
         if not ordered:
             return unavailable("no transactions found for this mint")
@@ -129,7 +145,9 @@ def read(
             buyer["kind"] = "bot" if len(history) >= BUSY_WALLET_SIGNATURES else "wallet"
         bots = sum(1 for b in buyers if b.get("kind") == "bot")
         sniped = len(buyers) >= MIN_BUYERS_FOR_SNIPED
+        holdings = _holdings(mint, supply, buyers, call)
         return {
+            **holdings,
             "status": "sniped" if sniped else "clean",
             "buyers_within_window": len(buyers),
             "window_seconds": WINDOW_SECONDS,
@@ -145,6 +163,47 @@ def read(
         }
     except Exception as error:  # network, parsing, timeouts: a gap, never a crash
         return unavailable(f"rpc lookup failed: {str(error)[:80]}")
+
+
+def _earliest_page(mint: str, call: Callable[[str, list[Any]], Any]) -> list[dict[str, Any]] | None:
+    """The mint's oldest signatures, for a token too busy for the newest-first
+    page. None when the RPC cannot answer oldest-first."""
+    try:
+        page = call("getTransactionsForAddress",
+                    [mint, {"sortOrder": "asc", "limit": EARLIEST_PAGE, "transactionDetails": "signatures"}])
+    except Exception:  # noqa: BLE001 -- not every RPC has this method
+        return None
+    rows = (page or {}).get("data") if isinstance(page, dict) else None
+    return list(rows) if rows else None
+
+
+def _holdings(
+    mint: str, supply: float | None, buyers: list[dict[str, Any]], call: Callable[[str, list[Any]], Any]
+) -> dict[str, Any]:
+    """What the early wallets bought, against what they hold now. Empty when
+    supply is unknown or a read fails: no number is better than a wrong one."""
+    if not supply or not buyers:
+        return {}
+    checked = [b for b in buyers[:MAX_HOLDINGS_CHECKED] if isinstance(b.get("share_pct"), (int, float))]
+    if not checked:
+        return {}
+    try:
+        for buyer in checked:
+            result = call("getTokenAccountsByOwner", [buyer["wallet"], {"mint": mint}, {"encoding": "jsonParsed"}])
+            held = 0.0
+            for account in (result or {}).get("value") or []:
+                info = ((((account.get("account") or {}).get("data") or {}).get("parsed") or {}).get("info") or {})
+                held += float((info.get("tokenAmount") or {}).get("uiAmount") or 0.0)
+            buyer["held_now_pct"] = round(100.0 * held / supply, 3)
+    except Exception:  # noqa: BLE001 -- the launch read stands without the balance part
+        for buyer in checked:
+            buyer.pop("held_now_pct", None)
+        return {}
+    return {
+        "early_wallets_balance_checked": len(checked),
+        "early_bought_pct": round(sum(b["share_pct"] for b in checked), 3),
+        "early_held_now_pct": round(sum(b["held_now_pct"] for b in checked), 3),
+    }
 
 
 def from_report(report: dict[str, Any], call: Callable[[str, list[Any]], Any] | None = None) -> dict[str, Any]:

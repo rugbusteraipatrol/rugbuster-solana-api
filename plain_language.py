@@ -101,6 +101,22 @@ HISTORY_FLAGS = {"creator_history_of_rugged_tokens", "creator_rug_rate_high", "c
 POSITION_FLAGS = {"creator_holds_launch_allocation", "creator_sold_launch_allocation", "creator_seeded_own_pool"}
 
 
+def _launch_dump_sentence(snipe: dict[str, Any]) -> str:
+    bought = snipe.get("early_bought_pct")
+    held = snipe.get("early_held_now_pct")
+    n = snipe.get("early_wallets_balance_checked") or snipe.get("buyers_within_window")
+    window = snipe.get("window_seconds") or 5
+    who = f"{n} wallets" if isinstance(n, int) else "The first wallets"
+    if isinstance(bought, (int, float)) and isinstance(held, (int, float)):
+        now = "none of it" if held < 0.01 else f"only {held:.1f}%"
+        return (
+            f"{who} bought {bought:.1f}% of the supply within {window} seconds of "
+            f"this token's creation, and hold {now} today. That exit already "
+            "happened; it is read from chain, wallet by wallet."
+        )
+    return "The wallets that bought in this token's first seconds have sold what they bought."
+
+
 def _snipe_sentence(snipe: dict[str, Any]) -> str:
     n = snipe.get("buyers_within_window")
     bots = snipe.get("bot_wallets_among_checked")
@@ -194,6 +210,8 @@ def _finding_sentence(
     # token, read from chain, and it is either a dump ahead or one that happened.
     if any(flag in POSITION_FLAGS for flag in flags):
         return _position_sentence(position or {}), FINDING
+    if "launch_wallets_sold_out" in flags:
+        return _launch_dump_sentence(snipe or {}), FINDING
     if "launch_sniped_by_bots" in flags and not any(flag in HISTORY_FLAGS for flag in flags):
         return _snipe_sentence(snipe or {}), FINDING
     # A deployer with rugs on record outranks a refusal: the refusal says we

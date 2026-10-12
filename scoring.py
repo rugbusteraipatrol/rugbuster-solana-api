@@ -167,6 +167,20 @@ CREATOR_SEEDED_POOL_RISK = 50
 # launch_snipe.py). A disclosure about the first seconds, not proof of harm:
 # it floors the verdict at WARN and, on its own, may not carry it past WARN.
 LAUNCH_SNIPED_RISK = 60
+# Wallets that took a large share in the first seconds and have sold it.
+# Altai and MissRose (2026-10-12): 18.0% and 12.6% bought in the creation
+# second, all of it sold, both scored GOOD 1 before this rule. Same floor
+# as a creator who sold a material position: the wallet split is the only
+# difference, and on Altai one of the four is the wallet pump.fun names.
+LAUNCH_DUMP_MIN_SHARE_PCT = 10.0
+LAUNCH_DUMP_SOLD_FRACTION = 0.8
+LAUNCH_WALLETS_SOLD_RISK = 75
+# Launch findings are scored only while the token is young. Read oldest
+# first, nearly every pump.fun token has bots that took 10%+ in the first
+# seconds and sold: Fartcoin, GOAT, MOODENG, PNUT and USELESS all match
+# (measured 2026-10-12). Months later that is history, not a risk to a buyer
+# today, so past a week the read is reported and not scored.
+LAUNCH_RULES_MAX_AGE_SECONDS = 7 * 24 * 3600
 
 
 def deployer_history_from_record(record: dict[str, Any]) -> dict[str, Any] | None:
@@ -270,16 +284,31 @@ def apply_creator_position(
 
 
 def apply_launch_snipe(
-    risk: int, flags: list[str], snipe: dict[str, Any] | None
+    risk: int, flags: list[str], snipe: dict[str, Any] | None, now: float | None = None
 ) -> tuple[int, list[str]]:
-    """The launch-snipe floor. `sniped` means three or more distinct wallets
-    first held the token within 5 seconds of its creation. `clean`, `unavailable`
-    and a missing read all score as nothing; the evidence split reports which."""
+    """The launch floors. `sniped` means three or more distinct wallets first
+    held the token within 5 seconds of its creation. Separately, when the
+    wallets of those first seconds bought LAUNCH_DUMP_MIN_SHARE_PCT or more of
+    the supply and have sold most of it, that is a finding of its own and is
+    not capped at WARN. `clean`, `unavailable` and a missing read otherwise
+    score as nothing; the evidence split reports which."""
     flags = list(flags)
-    if not isinstance(snipe, dict) or snipe.get("status") != "sniped":
+    if not isinstance(snipe, dict):
         return _clamp(risk), flags
-    flags.append("launch_sniped_by_bots")
-    return _clamp(max(risk, LAUNCH_SNIPED_RISK)), flags
+    created = _number(snipe.get("creation_time"))
+    now = time.time() if now is None else now
+    if created is not None and now - created > LAUNCH_RULES_MAX_AGE_SECONDS:
+        return _clamp(risk), flags
+    if snipe.get("status") == "sniped":
+        flags.append("launch_sniped_by_bots")
+        risk = max(risk, LAUNCH_SNIPED_RISK)
+    bought = _number(snipe.get("early_bought_pct"))
+    held = _number(snipe.get("early_held_now_pct"))
+    if (snipe.get("status") in {"sniped", "clean"} and bought is not None and held is not None
+            and bought >= LAUNCH_DUMP_MIN_SHARE_PCT and held <= bought * (1 - LAUNCH_DUMP_SOLD_FRACTION)):
+        flags.append("launch_wallets_sold_out")
+        risk = max(risk, LAUNCH_WALLETS_SOLD_RISK)
+    return _clamp(risk), flags
 
 
 # A young token whose first seconds we could not read is not cleared. Measured
@@ -528,7 +557,7 @@ def score_scan_row(row: dict[str, Any], trust_stored_score: bool = True) -> dict
 # Bump when a change alters what a verdict means. The live cache is scoped to
 # this value, so a scoring change stops serving verdicts computed under the old
 # rules instead of leaking them for the rest of the cache TTL.
-SCORING_VERSION = "2026.10.09"
+SCORING_VERSION = "2026.10.12"
 
 
 # Canonical Solana mints. RugCheck returns no holder or liquidity data at all

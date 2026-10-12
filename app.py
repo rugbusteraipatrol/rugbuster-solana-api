@@ -717,6 +717,9 @@ def feed_reason(position: Any, snipe: Any) -> str | None:
         after = position.get("sold_after_seconds")
         when = f" {'within' if position.get('sold_after_is_upper_bound') else 'after'} {_span(after)}" if isinstance(after, (int, float)) else ""
         return f"Creator bought {share:.1f}% at creation and sold it{when}."
+    bought, held = snipe.get("early_bought_pct"), snipe.get("early_held_now_pct")
+    if isinstance(bought, (int, float)) and isinstance(held, (int, float)) and bought >= 10 and held <= bought * 0.2:
+        return f"Wallets bought {bought:.1f}% in the first {snipe.get('window_seconds') or 5}s and sold it."
     if snipe.get("status") == "sniped":
         return f"{snipe.get('buyers_within_window')} wallets bought in the first {snipe.get('window_seconds')}s."
     if position.get("status") == "holding" and isinstance(share, (int, float)) and share >= 1:
