@@ -34,6 +34,7 @@ import launch_snipe as launch_snipe_module
 import launch_origin
 import perks as perks_module
 import push_alerts
+import app_events
 from scoring import (
     KNOWN_SOLANA_MINTS,
     SCORING_VERSION,
@@ -855,6 +856,19 @@ def watch():
     if outcome == "added_new_creator":
         push_alerts.mark_webhook_dirty()
     return jsonify({"ok": True, "watching": True, "mint": mint, "creator": creator, "share_pct": round(float(share), 3)})
+
+
+@app.post("/app/event")
+def app_event():
+    """Anonymous usage counts from the phone app (see app_events.py). Never fails the app."""
+    parsed = app_events.parse(request.get_json(silent=True))
+    if parsed is None:
+        return jsonify({"ok": False, "error": "unknown event"}), 400
+    try:
+        app_events.record(db_connect, *parsed)
+    except Exception:
+        return jsonify({"ok": False}), 503
+    return jsonify({"ok": True})
 
 
 @app.post("/unwatch")
