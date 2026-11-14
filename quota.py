@@ -26,7 +26,7 @@ SALT = os.getenv("SCORE_QUOTA_SALT", "rugbuster-score-quota")
 CONTACT = "fedja@rugbuster.io"
 
 # Our own services, never counted.
-OWN_AGENTS = ("RugBuster-Bot/",)
+OWN_AGENTS = ("RugBuster-Bot/", "rugbuster-solana-qa/", "rugbuster-confirmed-rug-regression/")
 
 # Shared by many unrelated users, so never used as a caller identity.
 GENERIC_AGENTS = (
