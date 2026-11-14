@@ -90,7 +90,8 @@ def _free_daily_limit():
     if not quota.over_limit(calls):
         return None
     address = str(request.args.get("address") or "").strip()
-    paid_url = f"{request.host_url.rstrip('/')}{x402_solana.PAID_PATH}?address={quote(address)}"
+    # Railway's edge terminates TLS, so request.host_url reads http://; the public URL is https.
+    paid_url = f"https://{request.host}{x402_solana.PAID_PATH}?address={quote(address)}"
     response = jsonify(with_identity(quota.limit_answer(address, paid_url)))
     response.status_code = 402
     return response
