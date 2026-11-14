@@ -35,6 +35,7 @@ import launch_origin
 import perks as perks_module
 import push_alerts
 import app_events
+import quota
 from scoring import (
     KNOWN_SOLANA_MINTS,
     SCORING_VERSION,
@@ -70,6 +71,28 @@ def _allow_browser_reads(response):
     # this service directly instead of re-implementing scoring itself.
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET"
+    return response
+
+
+@app.before_request
+def _free_daily_limit():
+    """Free /score calls per caller per day (see quota.py). /x402/score is not counted."""
+    if request.path != "/score" or request.method != "GET":
+        return None
+    user_agent = request.headers.get("User-Agent") or ""
+    if quota.is_own(user_agent):
+        return None
+    keys = quota.caller_keys(quota.client_ip(request.headers, request.remote_addr), user_agent)
+    try:
+        calls = quota.count_call(db_connect, keys)
+    except Exception:
+        return None
+    if not quota.over_limit(calls):
+        return None
+    address = str(request.args.get("address") or "").strip()
+    paid_url = f"{request.host_url.rstrip('/')}{x402_solana.PAID_PATH}?address={quote(address)}"
+    response = jsonify(with_identity(quota.limit_answer(address, paid_url)))
+    response.status_code = 402
     return response
 
 
