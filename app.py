@@ -71,6 +71,7 @@ def _allow_browser_reads(response):
     # this service directly instead of re-implementing scoring itself.
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET"
+    response.headers["Access-Control-Allow-Headers"] = "X-API-Key"
     return response
 
 
@@ -82,6 +83,26 @@ def _free_daily_limit():
     user_agent = request.headers.get("User-Agent") or ""
     if quota.is_own(user_agent):
         return None
+    address = str(request.args.get("address") or "").strip()
+    raw_key = quota.api_key_from(request.headers, request.args)
+    if raw_key:
+        try:
+            plan = quota.lookup_key(db_connect, raw_key)
+        except Exception:
+            return None
+        if plan is None:
+            response = jsonify(with_identity(quota.invalid_key_answer(address)))
+            response.status_code = 401
+            return response
+        try:
+            calls = quota.count_call(db_connect, [plan["counter"]])
+        except Exception:
+            return None
+        if calls <= plan["daily_limit"]:
+            return None
+        response = jsonify(with_identity(quota.plan_limit_answer(address, plan["plan"], plan["daily_limit"])))
+        response.status_code = 429
+        return response
     keys = quota.caller_keys(quota.client_ip(request.headers, request.remote_addr), user_agent)
     try:
         calls = quota.count_call(db_connect, keys)
@@ -89,7 +110,6 @@ def _free_daily_limit():
         return None
     if not quota.over_limit(calls):
         return None
-    address = str(request.args.get("address") or "").strip()
     # Railway's edge terminates TLS, so request.host_url reads http://; the public URL is https.
     paid_url = f"https://{request.host}{x402_solana.PAID_PATH}?address={quote(address)}"
     response = jsonify(with_identity(quota.limit_answer(address, paid_url)))

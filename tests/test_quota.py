@@ -113,3 +113,51 @@ def test_client_ip_trusts_edge_headers_only():
 def test_no_raw_ip_is_stored():
     key = quota.caller_keys("185.98.171.244", "Purpump/0.1")[0]
     assert "185.98" not in quota.hashed(key, "2026-11-14")
+
+
+def call_with_key(key, ip="1.2.3.4"):
+    from app import app
+
+    return app.test_client().get(
+        f"/score?address={MINT}", headers={"User-Agent": "Mozilla/5.0", "X-Real-IP": ip, "X-API-Key": key}
+    )
+
+
+def test_key_uses_its_plan_cap_not_the_free_limit(db, monkeypatch):
+    monkeypatch.setattr(quota, "lookup_key", lambda connect, raw: {"plan": "starter", "daily_limit": 5, "counter": "key:abc"})
+    statuses = [call_with_key("rb_good").status_code for _ in range(6)]
+    assert 402 not in statuses[:5] and 429 not in statuses[:5]
+    assert statuses[5] == 429
+    assert call_with_key("rb_good").get_json()["error"] == "plan_daily_limit"
+
+
+def test_key_calls_do_not_use_up_the_free_ip_allowance(db, monkeypatch):
+    monkeypatch.setattr(quota, "lookup_key", lambda connect, raw: {"plan": "starter", "daily_limit": 50, "counter": "key:abc"})
+    for _ in range(5):
+        call_with_key("rb_good")
+    assert call("Mozilla/5.0").status_code != 402
+
+
+def test_unknown_key_gets_401(db, monkeypatch):
+    monkeypatch.setattr(quota, "lookup_key", lambda connect, raw: None)
+    response = call_with_key("rb_wrong")
+    assert response.status_code == 401
+    assert response.get_json()["error"] == "invalid_api_key"
+
+
+def test_key_lookup_outage_lets_the_call_through(db, monkeypatch):
+    def broken(connect, raw):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(quota, "lookup_key", broken)
+    assert call_with_key("rb_any").status_code not in (401, 402, 429)
+
+
+def test_key_also_read_from_query_and_only_hash_kept():
+    assert quota.api_key_from({}, {"api_key": " rb_x "}) == "rb_x"
+    assert quota.key_hash("rb_x") != "rb_x" and len(quota.key_hash("rb_x")) == 64
+
+
+def test_issue_key_rejects_unknown_plan():
+    with pytest.raises(ValueError):
+        quota.issue_key(lambda: None, "x", "platinum")
