@@ -71,7 +71,6 @@ def _allow_browser_reads(response):
     # this service directly instead of re-implementing scoring itself.
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET"
-    response.headers["Access-Control-Allow-Headers"] = "X-API-Key"
     return response
 
 

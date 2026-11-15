@@ -161,3 +161,20 @@ def test_key_also_read_from_query_and_only_hash_kept():
 def test_issue_key_rejects_unknown_plan():
     with pytest.raises(ValueError):
         quota.issue_key(lambda: None, "x", "platinum")
+
+
+def test_keys_live_in_their_own_table():
+    # An unrelated older `api_keys` table exists in production; never touch it.
+    import re
+
+    assert not re.search(r"\bapi_keys\b", quota.KEYS_TABLE)
+    assert "score_api_keys" in quota.KEYS_TABLE
+
+
+def test_browser_preflight_may_send_the_key():
+    import x402_solana
+
+    seen = {}
+    middleware = x402_solana.CorsMiddleware(lambda environ, start_response: [])
+    middleware({"REQUEST_METHOD": "OPTIONS"}, lambda status, headers, exc=None: seen.update(dict(headers)))
+    assert "X-API-Key" in seen["Access-Control-Allow-Headers"]

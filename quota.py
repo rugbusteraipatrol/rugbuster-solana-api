@@ -47,8 +47,9 @@ GENERIC_AGENTS = (
 _ready = False
 _keys_ready = False
 
+# Own table name: an older service left an unrelated `api_keys` table in this database.
 KEYS_TABLE = """
-CREATE TABLE IF NOT EXISTS api_keys (
+CREATE TABLE IF NOT EXISTS score_api_keys (
   key_hash TEXT PRIMARY KEY,
   label TEXT NOT NULL,
   plan TEXT NOT NULL,
@@ -146,7 +147,7 @@ def lookup_key(connect, raw_key: str) -> dict | None:
                 cursor.execute(KEYS_TABLE)
                 _keys_ready = True
             cursor.execute(
-                "SELECT plan, daily_limit FROM api_keys WHERE key_hash = %s AND active",
+                "SELECT plan, daily_limit FROM score_api_keys WHERE key_hash = %s AND active",
                 (key_hash(raw_key),),
             )
             row = cursor.fetchone()
@@ -165,7 +166,7 @@ def issue_key(connect, label: str, plan: str) -> str:
         with connection.cursor() as cursor:
             cursor.execute(KEYS_TABLE)
             cursor.execute(
-                "INSERT INTO api_keys (key_hash, label, plan, daily_limit) VALUES (%s, %s, %s, %s)",
+                "INSERT INTO score_api_keys (key_hash, label, plan, daily_limit) VALUES (%s, %s, %s, %s)",
                 (key_hash(raw_key), label, plan, PLANS[plan]),
             )
         connection.commit()

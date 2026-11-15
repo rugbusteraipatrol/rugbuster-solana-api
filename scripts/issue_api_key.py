@@ -4,7 +4,7 @@
 
 The key is printed once. Only its sha256 is stored, so a lost key cannot be
 recovered: issue a new one and revoke the old with
-    UPDATE api_keys SET active = FALSE WHERE label = '...';
+    UPDATE score_api_keys SET active = FALSE WHERE label = '...';
 """
 import argparse
 import os
