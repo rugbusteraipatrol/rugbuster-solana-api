@@ -171,6 +171,59 @@ def test_keys_live_in_their_own_table():
     assert "score_api_keys" in quota.KEYS_TABLE
 
 
+PHONE = "abcdefghij012345"
+
+
+def call_app(device=PHONE, ip="1.2.3.4", ua="okhttp/4.9.2"):
+    from app import app
+
+    return app.test_client().get(
+        f"/score?address={MINT}", headers={"User-Agent": ua, "X-Real-IP": ip, "X-RugBuster-Device": device}
+    )
+
+
+def test_app_phone_is_counted_per_device_not_per_ip(db, monkeypatch):
+    monkeypatch.setattr(quota, "APP_PER_DEVICE", 3)
+    monkeypatch.setattr(quota, "APP_PER_IP", 100)
+    # Another device on the same Wi-Fi used up the free IP allowance.
+    for _ in range(4):
+        call("Mozilla/5.0")
+    assert call("Mozilla/5.0").status_code == 402
+    statuses = [call_app().status_code for _ in range(4)]
+    assert 402 not in statuses[:3] and statuses[3] == 402
+    # A second phone on the same IP still has its own allowance.
+    assert call_app(device="zzzzzzzzzz000000").status_code != 402
+
+
+def test_app_limit_answer_speaks_to_a_phone_user(db, monkeypatch):
+    monkeypatch.setattr(quota, "APP_PER_DEVICE", 1)
+    call_app()
+    body = call_app().get_json()
+    assert body["error"] == "free_daily_limit"
+    assert body["message"].startswith("This phone has used its free checks for today.")
+
+
+def test_made_up_device_ids_share_one_ip_cap(db, monkeypatch):
+    monkeypatch.setattr(quota, "APP_PER_DEVICE", 100)
+    monkeypatch.setattr(quota, "APP_PER_IP", 3)
+    statuses = [call_app(device=f"fake{i:012d}").status_code for i in range(4)]
+    assert statuses[3] == 402
+
+
+def test_device_header_is_ignored_outside_the_app(db):
+    # A script cannot buy a fresh allowance per call by inventing ids.
+    statuses = [call_app(device=f"fake{i:012d}", ua="python-requests/2.31").status_code for i in range(4)]
+    assert statuses[3] == 402
+    assert quota.app_device({"X-RugBuster-Device": "short"}, "okhttp/4.9.2") is None
+    assert quota.app_device({"X-RugBuster-Device": PHONE}, "okhttp/4.9.2") == PHONE
+
+
+def test_live_desk_is_never_counted(db):
+    for _ in range(6):
+        assert call("RugBuster-Live-Desk/0.1").status_code != 402
+    assert db.calls == {}
+
+
 def test_browser_preflight_may_send_the_key():
     import x402_solana
 

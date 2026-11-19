@@ -102,15 +102,28 @@ def _free_daily_limit():
         response = jsonify(with_identity(quota.plan_limit_answer(address, plan["plan"], plan["daily_limit"])))
         response.status_code = 429
         return response
-    keys = quota.caller_keys(quota.client_ip(request.headers, request.remote_addr), user_agent)
+    ip = quota.client_ip(request.headers, request.remote_addr)
+    # Railway's edge terminates TLS, so request.host_url reads http://; the public URL is https.
+    paid_url = f"https://{request.host}{x402_solana.PAID_PATH}?address={quote(address)}"
+    device = quota.app_device(request.headers, user_agent)
+    if device:
+        limits = quota.app_limits(ip, device)
+        try:
+            counts = quota.count_calls(db_connect, [counter for counter, _ in limits])
+        except Exception:
+            return None
+        if all(calls <= cap for calls, (_, cap) in zip(counts, limits)):
+            return None
+        response = jsonify(with_identity(quota.app_limit_answer(address, paid_url)))
+        response.status_code = 402
+        return response
+    keys = quota.caller_keys(ip, user_agent)
     try:
         calls = quota.count_call(db_connect, keys)
     except Exception:
         return None
     if not quota.over_limit(calls):
         return None
-    # Railway's edge terminates TLS, so request.host_url reads http://; the public URL is https.
-    paid_url = f"https://{request.host}{x402_solana.PAID_PATH}?address={quote(address)}"
     response = jsonify(with_identity(quota.limit_answer(address, paid_url)))
     response.status_code = 402
     return response

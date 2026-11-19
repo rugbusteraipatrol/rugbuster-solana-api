@@ -19,11 +19,18 @@ API keys (2026-11-15, beta): a caller that sends a key in the X-API-Key header
 (or ?api_key=) is counted under that key against its plan's daily cap instead
 of the free 100. During the beta every plan is free; keys are issued by hand
 with scripts/issue_api_key.py. Only a sha256 of a key is stored.
+
+The Android app (2026-11-19) sends a random id made on the phone in the
+X-RugBuster-Device header. Its calls are counted per phone instead of per IP:
+everyone behind one Wi-Fi or one carrier's shared address would otherwise
+share 100 a day, and the app re-checks tracked tokens in the background. A
+wider cap per IP stops made-up ids from becoming a free pass.
 """
 from __future__ import annotations
 
 import hashlib
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 
@@ -34,8 +41,15 @@ CONTACT = "fedja@rugbuster.io"
 # Daily caps per plan: the monthly volume on rugbuster.io divided by 30.
 PLANS = {"starter": 3400, "growth": 17000, "pro": 34000}
 
-# Our own services, never counted.
-OWN_AGENTS = ("RugBuster-Bot/", "rugbuster-solana-qa/", "rugbuster-confirmed-rug-regression/")
+# Our own services, never counted. Live Desk is our in-house desktop tool: on
+# 2026-11-19 it used up the free 100 for every device on Fedja's home network.
+OWN_AGENTS = ("RugBuster-Bot/", "rugbuster-solana-qa/", "rugbuster-confirmed-rug-regression/", "RugBuster-Live-Desk/")
+
+# The Android app: React Native's HTTP client plus the phone's random id.
+APP_PER_DEVICE = int(os.getenv("SCORE_APP_PER_DEVICE", "1000"))
+APP_PER_IP = int(os.getenv("SCORE_APP_PER_IP", "2000"))
+APP_AGENTS = ("okhttp/",)
+DEVICE_ID = re.compile(r"[a-z0-9]{16}")
 
 # Shared by many unrelated users, so never used as a caller identity.
 GENERIC_AGENTS = (
@@ -96,11 +110,29 @@ def hashed(key: str, day: str) -> str:
     return hashlib.sha256(f"{SALT}|{day}|{key}".encode("utf-8")).hexdigest()[:32]
 
 
+def app_device(headers, user_agent: str) -> str | None:
+    """The app's phone id, or None when this call is not from the app."""
+    device = (headers.get("X-RugBuster-Device") or "").strip()
+    if DEVICE_ID.fullmatch(device) and (user_agent or "").lower().startswith(APP_AGENTS):
+        return device
+    return None
+
+
+def app_limits(ip: str, device: str) -> list[tuple[str, int]]:
+    """(counter, daily cap) pairs for one app call."""
+    return [(f"dev:{device}", APP_PER_DEVICE), (f"appip:{ip}", APP_PER_IP)]
+
+
 def count_call(connect, keys: list[str], day: str | None = None) -> int:
     """Add one call to every key and return the highest count among them."""
+    return max(count_calls(connect, keys, day), default=0)
+
+
+def count_calls(connect, keys: list[str], day: str | None = None) -> list[int]:
+    """Add one call to every key and return each key's count, in order."""
     global _ready
     day = day or today()
-    highest = 0
+    counts = []
     with connect() as connection:
         with connection.cursor() as cursor:
             if not _ready:
@@ -125,9 +157,9 @@ def count_call(connect, keys: list[str], day: str | None = None) -> int:
                     """,
                     (day, hashed(key, day), key.split(":", 1)[0]),
                 )
-                highest = max(highest, int(cursor.fetchone()[0]))
+                counts.append(int(cursor.fetchone()[0]))
         connection.commit()
-    return highest
+    return counts
 
 
 def key_hash(raw_key: str) -> str:
@@ -198,6 +230,17 @@ def plan_limit_answer(address: str, plan: str, daily_limit: int) -> dict:
 
 def over_limit(calls: int) -> bool:
     return calls > FREE_PER_DAY
+
+
+def app_limit_answer(address: str, paid_url: str) -> dict:
+    """Same error code as the free limit, with words a phone user can act on."""
+    answer = limit_answer(address, paid_url)
+    answer["message"] = (
+        "This phone has used its free checks for today. "
+        "They come back at 00:00 UTC. Questions: " + CONTACT
+    )
+    answer["free_per_day"] = APP_PER_DEVICE
+    return answer
 
 
 def limit_answer(address: str, paid_url: str) -> dict:
