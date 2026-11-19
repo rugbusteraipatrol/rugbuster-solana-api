@@ -48,6 +48,7 @@ OWN_AGENTS = ("RugBuster-Bot/", "rugbuster-solana-qa/", "rugbuster-confirmed-rug
 # The Android app: React Native's HTTP client plus the phone's random id.
 APP_PER_DEVICE = int(os.getenv("SCORE_APP_PER_DEVICE", "1000"))
 APP_PER_IP = int(os.getenv("SCORE_APP_PER_IP", "2000"))
+APP_LEGACY_PER_IP = int(os.getenv("SCORE_APP_LEGACY_PER_IP", "1000"))
 APP_AGENTS = ("okhttp/",)
 DEVICE_ID = re.compile(r"[a-z0-9]{16}")
 
@@ -110,16 +111,26 @@ def hashed(key: str, day: str) -> str:
     return hashlib.sha256(f"{SALT}|{day}|{key}".encode("utf-8")).hexdigest()[:32]
 
 
+def is_app(user_agent: str) -> bool:
+    return (user_agent or "").lower().startswith(APP_AGENTS)
+
+
 def app_device(headers, user_agent: str) -> str | None:
     """The app's phone id, or None when this call is not from the app."""
     device = (headers.get("X-RugBuster-Device") or "").strip()
-    if DEVICE_ID.fullmatch(device) and (user_agent or "").lower().startswith(APP_AGENTS):
+    if DEVICE_ID.fullmatch(device) and is_app(user_agent):
         return device
     return None
 
 
-def app_limits(ip: str, device: str) -> list[tuple[str, int]]:
-    """(counter, daily cap) pairs for one app call."""
+def app_limits(ip: str, device: str | None) -> list[tuple[str, int]]:
+    """(counter, daily cap) pairs for one app call.
+
+    Versions up to 1.7.4 send no phone id: they get their own allowance per IP,
+    apart from browsers and scripts on the same network.
+    """
+    if device is None:
+        return [(f"appip-legacy:{ip}", APP_LEGACY_PER_IP)]
     return [(f"dev:{device}", APP_PER_DEVICE), (f"appip:{ip}", APP_PER_IP)]
 
 

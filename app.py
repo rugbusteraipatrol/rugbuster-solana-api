@@ -105,9 +105,8 @@ def _free_daily_limit():
     ip = quota.client_ip(request.headers, request.remote_addr)
     # Railway's edge terminates TLS, so request.host_url reads http://; the public URL is https.
     paid_url = f"https://{request.host}{x402_solana.PAID_PATH}?address={quote(address)}"
-    device = quota.app_device(request.headers, user_agent)
-    if device:
-        limits = quota.app_limits(ip, device)
+    if quota.is_app(user_agent):
+        limits = quota.app_limits(ip, quota.app_device(request.headers, user_agent))
         try:
             counts = quota.count_calls(db_connect, [counter for counter, _ in limits])
         except Exception:

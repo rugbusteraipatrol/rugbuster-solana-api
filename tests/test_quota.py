@@ -218,6 +218,21 @@ def test_device_header_is_ignored_outside_the_app(db):
     assert quota.app_device({"X-RugBuster-Device": PHONE}, "okhttp/4.9.2") == PHONE
 
 
+def test_old_app_without_device_id_has_its_own_ip_allowance(db, monkeypatch):
+    from app import app
+
+    monkeypatch.setattr(quota, "APP_LEGACY_PER_IP", 3)
+    for _ in range(4):
+        call("Mozilla/5.0")
+    assert call("Mozilla/5.0").status_code == 402
+    old_app = lambda: app.test_client().get(
+        f"/score?address={MINT}", headers={"User-Agent": "okhttp/4.9.2", "X-Real-IP": "1.2.3.4"}
+    )
+    statuses = [old_app().status_code for _ in range(4)]
+    assert 402 not in statuses[:3] and statuses[3] == 402
+    assert old_app().get_json()["message"].startswith("This phone has used")
+
+
 def test_live_desk_is_never_counted(db):
     for _ in range(6):
         assert call("RugBuster-Live-Desk/0.1").status_code != 402
